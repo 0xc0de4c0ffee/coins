@@ -96,4 +96,25 @@ contract Coins is ERC6909 {
         ownerOf[id] = newOwner;
         emit OwnershipTransferred(id);
     }
+
+    // COIN ID WRAPPING
+
+    function wrap(address asset, uint256 amount) public {
+        totalSupply[uint256(uint160(asset))] += amount;
+        _mint(msg.sender, uint256(uint160(asset)), amount);
+        IERC20(asset).transferFrom(msg.sender, address(this), amount);
+    }
+
+    function unwrap(address asset, uint256 amount) public {
+        _burn(msg.sender, uint256(uint160(asset)), amount);
+        unchecked {
+            totalSupply[uint256(uint160(asset))] -= amount;
+        }
+        IERC20(asset).transfer(msg.sender, amount);
+    }
+}
+
+interface IERC20 {
+    function transfer(address, uint256) external;
+    function transferFrom(address, address, uint256) external;
 }

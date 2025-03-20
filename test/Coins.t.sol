@@ -36,7 +36,7 @@ contract CoinsTest is Test {
 
     // COIN CREATION TESTS
 
-    function test_CoinCreation() public {
+    function test_CoinCreation() public view {
         // Verify metadata
         (string memory name, string memory symbol, string memory tokenUri) = coins._metadata(coinId);
 
@@ -67,7 +67,7 @@ contract CoinsTest is Test {
 
     // COIN METADATA TESTS
 
-    function test_MetadataAccessors() public {
+    function test_MetadataAccessors() public view {
         assertEq(coins.name(coinId), NAME);
         assertEq(coins.symbol(coinId), SYMBOL);
         assertEq(coins.tokenURI(coinId), TOKEN_URI);
