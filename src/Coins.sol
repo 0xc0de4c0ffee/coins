@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.29;
 
+error Unauthorized();
+error AlreadyCreated();
+error InvalidMetadata();
+error InitializationFailed();
+error InvalidERC20Creation();
+
 contract Coins {
     event MetadataSet(uint256 indexed);
+    event ERC20Created(uint256 indexed);
     event OwnershipTransferred(uint256 indexed);
 
     event OperatorSet(address indexed, address indexed, bool);
     event Approval(address indexed, address indexed, uint256 indexed, uint256);
     event Transfer(address, address indexed, address indexed, uint256 indexed, uint256);
 
-    error Unauthorized();
-    error AlreadyCreated();
-    error InvalidMetadata();
-
-    mapping(uint256 id => Metadata) public _metadata;
+    mapping(uint256 id => Metadata) internal _metadata;
     mapping(uint256 id => address owner) public ownerOf;
     mapping(uint256 id => uint256) public totalSupply;
 
@@ -70,6 +73,43 @@ contract Coins {
         _mint(ownerOf[id] = owner, id, supply);
     }
 
+    // CREATE2 ERC20 TOKENS
+
+    function createToken(uint256 id) public {
+        require(bytes(_metadata[id].symbol).length != 0, Unauthorized());
+
+        new Token{salt: bytes32(id)}(id);
+
+        emit ERC20Created(id);
+    }
+
+    function tokenize(uint256 id, uint256 amount) public {
+        _burn(msg.sender, id, amount);
+        Token(_predictAddress(id)).mint(msg.sender, amount);
+    }
+
+    function untokenize(uint256 id, uint256 amount) public {
+        Token(_predictAddress(id)).burn(msg.sender, amount);
+        _mint(msg.sender, id, amount);
+    }
+
+    function _predictAddress(uint256 id) internal view returns (address) {
+        return address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xff),
+                            address(this),
+                            bytes32(id),
+                            keccak256(abi.encodePacked(type(Token).creationCode, abi.encode(id)))
+                        )
+                    )
+                )
+            )
+        );
+    }
+
     // COIN ID MINT/BURN
 
     function mint(address to, uint256 id, uint256 amount) public onlyOwnerOf(id) {
@@ -101,12 +141,12 @@ contract Coins {
 
     function wrap(address asset, uint256 amount) public {
         _mint(msg.sender, uint256(uint160(asset)), amount);
-        IERC20(asset).transferFrom(msg.sender, address(this), amount);
+        Token(asset).transferFrom(msg.sender, address(this), amount);
     }
 
     function unwrap(address asset, uint256 amount) public {
         _burn(msg.sender, uint256(uint160(asset)), amount);
-        IERC20(asset).transfer(msg.sender, amount);
+        Token(asset).transfer(msg.sender, amount);
     }
 
     // ERC6909
@@ -193,7 +233,65 @@ contract Coins {
     }
 }
 
-interface IERC20 {
-    function transfer(address, uint256) external;
-    function transferFrom(address, address, uint256) external;
+contract Token {
+    event Approval(address indexed from, address indexed to, uint256 amount);
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+
+    string public name;
+    string public symbol;
+    uint256 public constant decimals = 18;
+
+    uint256 public totalSupply;
+
+    address internal immutable COINS = msg.sender;
+
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    constructor(uint256 id) {
+        (name, symbol) = (Coins(msg.sender).name(id), Coins(msg.sender).symbol(id));
+    }
+
+    function approve(address to, uint256 amount) public virtual returns (bool) {
+        allowance[msg.sender][to] = amount;
+        emit Approval(msg.sender, to, amount);
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) public virtual returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        unchecked {
+            balanceOf[to] += amount;
+        }
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public virtual returns (bool) {
+        if (allowance[from][msg.sender] != type(uint256).max) allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        unchecked {
+            balanceOf[to] += amount;
+        }
+        emit Transfer(from, to, amount);
+        return true;
+    }
+
+    function mint(address to, uint256 amount) public payable virtual {
+        require(msg.sender == COINS, Unauthorized());
+        unchecked {
+            totalSupply += amount;
+            balanceOf[to] += amount;
+        }
+        emit Transfer(address(0), to, amount);
+    }
+
+    function burn(address from, uint256 amount) public payable virtual {
+        require(msg.sender == COINS, Unauthorized());
+        balanceOf[from] -= amount;
+        unchecked {
+            totalSupply -= amount;
+        }
+        emit Transfer(from, address(0), amount);
+    }
 }
