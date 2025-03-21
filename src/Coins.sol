@@ -4,8 +4,6 @@ pragma solidity 0.8.29;
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
-error InitializationFailed();
-error InvalidERC20Creation();
 
 contract Coins {
     event MetadataSet(uint256 indexed);
@@ -63,13 +61,9 @@ contract Coins {
         uint256 supply
     ) public {
         require(bytes(_symbol).length != 0, InvalidMetadata()); // Must have ticker.
-
         uint256 id = uint256(keccak256(abi.encodePacked(_name, _symbol, _tokenURI)));
-
         require(bytes(_metadata[id].symbol).length == 0, AlreadyCreated()); // New.
-
         _metadata[id] = Metadata(_name, _symbol, _tokenURI);
-
         _mint(ownerOf[id] = owner, id, supply);
     }
 
@@ -77,9 +71,7 @@ contract Coins {
 
     function createToken(uint256 id) public {
         require(bytes(_metadata[id].symbol).length != 0, Unauthorized());
-
         new Token{salt: bytes32(id)}(id);
-
         emit ERC20Created(id);
     }
 
@@ -99,7 +91,7 @@ contract Coins {
                 uint256(
                     keccak256(
                         abi.encodePacked(
-                            bytes1(0xff),
+                            bytes1(0xFF),
                             address(this),
                             bytes32(id),
                             keccak256(abi.encodePacked(type(Token).creationCode, abi.encode(id)))
@@ -139,29 +131,24 @@ contract Coins {
 
     // COIN ID WRAPPING
 
-    function wrap(address asset, uint256 amount) public {
-        _mint(msg.sender, uint256(uint160(asset)), amount);
-        Token(asset).transferFrom(msg.sender, address(this), amount);
+    function wrap(address token, uint256 amount) public {
+        _mint(msg.sender, uint256(uint160(token)), amount);
+        Token(token).transferFrom(msg.sender, address(this), amount);
     }
 
-    function unwrap(address asset, uint256 amount) public {
-        _burn(msg.sender, uint256(uint160(asset)), amount);
-        Token(asset).transfer(msg.sender, amount);
+    function unwrap(address token, uint256 amount) public {
+        _burn(msg.sender, uint256(uint160(token)), amount);
+        Token(token).transfer(msg.sender, amount);
     }
 
     // ERC6909
 
     function transfer(address to, uint256 id, uint256 amount) public returns (bool) {
         balanceOf[msg.sender][id] -= amount;
-
-        // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
         unchecked {
             balanceOf[to][id] += amount;
         }
-
         emit Transfer(msg.sender, msg.sender, to, id, amount);
-
         return true;
     }
 
@@ -173,17 +160,11 @@ contract Coins {
             uint256 allowed = allowance[from][msg.sender][id];
             if (allowed != type(uint256).max) allowance[from][msg.sender][id] = allowed - amount;
         }
-
         balanceOf[from][id] -= amount;
-
-        // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
         unchecked {
             balanceOf[to][id] += amount;
         }
-
         emit Transfer(msg.sender, from, to, id, amount);
-
         return true;
     }
 
@@ -210,25 +191,17 @@ contract Coins {
 
     function _mint(address to, uint256 id, uint256 amount) internal {
         totalSupply[id] += amount;
-
-        // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
         unchecked {
             balanceOf[to][id] += amount;
         }
-
         emit Transfer(msg.sender, address(0), to, id, amount);
     }
 
     function _burn(address from, uint256 id, uint256 amount) internal {
         balanceOf[from][id] -= amount;
-
-        // Cannot underflow because a user's balance
-        // will never be larger than the total supply.
         unchecked {
             totalSupply[id] -= amount;
         }
-
         emit Transfer(msg.sender, from, address(0), id, amount);
     }
 }
@@ -248,7 +221,7 @@ contract Token {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
-    constructor(uint256 id) {
+    constructor(uint256 id) payable {
         (name, symbol) = (Coins(msg.sender).name(id), Coins(msg.sender).symbol(id));
     }
 
