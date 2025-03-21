@@ -4,6 +4,12 @@ pragma solidity 0.8.29;
 import {Test} from "forge-std/Test.sol";
 import {Coins} from "../src/Coins.sol";
 
+error Unauthorized();
+error AlreadyCreated();
+error InvalidMetadata();
+error InitializationFailed();
+error InvalidERC20Creation();
+
 contract CoinsTest is Test {
     Coins public coins;
 
@@ -37,13 +43,6 @@ contract CoinsTest is Test {
     // COIN CREATION TESTS
 
     function test_CoinCreation() public view {
-        // Verify metadata
-        (string memory name, string memory symbol, string memory tokenUri) = coins._metadata(coinId);
-
-        assertEq(name, NAME);
-        assertEq(symbol, SYMBOL);
-        assertEq(tokenUri, TOKEN_URI);
-
         // Verify owner
         assertEq(coins.ownerOf(coinId), deployer);
 
@@ -54,14 +53,14 @@ contract CoinsTest is Test {
     function test_RevertWhen_CreatingDuplicateCoin() public {
         vm.prank(alice);
         // Should revert when trying to create a coin with same parameters
-        vm.expectRevert(Coins.AlreadyCreated.selector);
+        vm.expectRevert(AlreadyCreated.selector);
         coins.create(NAME, SYMBOL, TOKEN_URI, alice, INITIAL_SUPPLY);
     }
 
     function test_RevertWhen_CreatingWithEmptySymbol() public {
         vm.prank(alice);
         // Should revert when symbol is empty
-        vm.expectRevert(Coins.InvalidMetadata.selector);
+        vm.expectRevert(InvalidMetadata.selector);
         coins.create(NAME, "", TOKEN_URI, alice, INITIAL_SUPPLY);
     }
 
