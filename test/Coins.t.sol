@@ -32,10 +32,10 @@ contract CoinsTest is Test {
         coins = new Coins();
 
         // Create a test coin
-        coins.create(NAME, SYMBOL, TOKEN_URI, deployer, INITIAL_SUPPLY);
+        coins.createToken(NAME, SYMBOL, TOKEN_URI, deployer, INITIAL_SUPPLY, true);
 
         // Calculate the expected coin ID
-        coinId = uint256(keccak256(abi.encodePacked(NAME, SYMBOL, TOKEN_URI)));
+        coinId = uint256(uint160(address(coins)));
 
         vm.stopPrank();
     }
@@ -54,14 +54,14 @@ contract CoinsTest is Test {
         vm.prank(alice);
         // Should revert when trying to create a coin with same parameters
         vm.expectRevert(AlreadyCreated.selector);
-        coins.create(NAME, SYMBOL, TOKEN_URI, alice, INITIAL_SUPPLY);
+        coins.createToken(NAME, SYMBOL, TOKEN_URI, alice, INITIAL_SUPPLY, true);
     }
 
     function test_RevertWhen_CreatingWithEmptySymbol() public {
         vm.prank(alice);
         // Should revert when symbol is empty
         vm.expectRevert(InvalidMetadata.selector);
-        coins.create(NAME, "", TOKEN_URI, alice, INITIAL_SUPPLY);
+        coins.createToken(NAME, "", TOKEN_URI, alice, INITIAL_SUPPLY, true);
     }
 
     // COIN METADATA TESTS
@@ -79,10 +79,10 @@ contract CoinsTest is Test {
         string memory newTokenUri = "https://example.com/token/updated";
 
         vm.prank(deployer);
-        coins.setMetadata(coinId, newName, newSymbol, newTokenUri);
+        coins.setMetadata(coinId, newTokenUri);
 
-        assertEq(coins.name(coinId), newName);
-        assertEq(coins.symbol(coinId), newSymbol);
+        //assertEq(coins.name(coinId), newName);
+        //assertEq(coins.symbol(coinId), newSymbol);
         assertEq(coins.tokenURI(coinId), newTokenUri);
 
         // Calculate the new coin ID to verify it's still the same coin
@@ -97,7 +97,7 @@ contract CoinsTest is Test {
         vm.prank(alice);
         // Should revert when non-owner tries to update metadata
         vm.expectRevert(); // Just tests for any revert
-        coins.setMetadata(coinId, "Hacked Coin", "HACK", "https://evil.com");
+        coins.setMetadata(coinId, "https://evil.com");
     }
 
     // OWNERSHIP TESTS
@@ -110,12 +110,12 @@ contract CoinsTest is Test {
 
         // Verify new owner can update metadata
         vm.prank(alice);
-        coins.setMetadata(coinId, "Alice Coin", "ALICE", "https://alice.com");
+        coins.setMetadata(coinId, "https://alice.com");
 
         // Original owner should no longer have permission
         vm.expectRevert();
         vm.prank(deployer);
-        coins.setMetadata(coinId, "Deployer Coin", "DEPLOY", "https://deployer.com");
+        coins.setMetadata(coinId, "https://deployer.com");
     }
 
     function test_RevertWhen_UnauthorizedOwnershipTransfer() public {
@@ -216,9 +216,9 @@ contract CoinsTest is Test {
         uint256 supply2 = 500_000 * 1e18;
 
         vm.prank(alice);
-        coins.create(name2, symbol2, tokenUri2, alice, supply2);
+        coins.createToken(name2, symbol2, tokenUri2, alice, supply2, true);
 
-        uint256 coinId2 = uint256(keccak256(abi.encodePacked(name2, symbol2, tokenUri2)));
+        uint256 coinId2 = uint256(uint160(address(coins)));
 
         // Verify both coins exist with correct owners and balances
         assertEq(coins.ownerOf(coinId), deployer);
