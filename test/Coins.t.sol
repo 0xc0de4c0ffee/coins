@@ -7,8 +7,6 @@ import {Coins} from "../src/Coins.sol";
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
-error InitializationFailed();
-error InvalidERC20Creation();
 
 contract CoinsTest is Test {
     Coins public coins;
