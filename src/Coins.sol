@@ -18,9 +18,10 @@ contract Coins {
     mapping(uint256 id => address owner) public ownerOf;
     mapping(uint256 id => uint256) public totalSupply;
 
-    mapping(address => mapping(address => bool)) public isOperator;
-    mapping(address => mapping(uint256 => uint256)) public balanceOf;
-    mapping(address => mapping(address => mapping(uint256 => uint256))) public allowance;
+    mapping(address owner => mapping(uint256 id => uint256)) public balanceOf;
+    mapping(address owner => mapping(address operator => bool)) public isOperator;
+    mapping(address owner => mapping(address spender => mapping(uint256 id => uint256))) public
+        allowance;
 
     modifier onlyOwnerOf(uint256 id) {
         require(msg.sender == ownerOf[id], Unauthorized());
@@ -70,7 +71,7 @@ contract Coins {
     // CREATE2 ERC20 TOKENS
 
     function createToken(uint256 id) public {
-        require(bytes(_metadata[id].symbol).length != 0, Unauthorized());
+        require(bytes(_metadata[id].symbol).length != 0, InvalidMetadata());
         new Token{salt: bytes32(id)}(id);
         emit ERC20Created(id);
     }
@@ -132,8 +133,8 @@ contract Coins {
     // COIN ID WRAPPING
 
     function wrap(address token, uint256 amount) public {
-        _mint(msg.sender, uint256(uint160(token)), amount);
         Token(token).transferFrom(msg.sender, address(this), amount);
+        _mint(msg.sender, uint256(uint160(token)), amount);
     }
 
     function unwrap(address token, uint256 amount) public {
@@ -183,8 +184,8 @@ contract Coins {
     // ERC165
 
     function supportsInterface(bytes4 interfaceId) public pure returns (bool) {
-        return interfaceId == 0x01ffc9a7 // ERC165 Interface ID for ERC165.
-            || interfaceId == 0x0f632fb3; // ERC165 Interface ID for ERC6909.
+        return interfaceId == 0x01ffc9a7 // ERC165
+            || interfaceId == 0x0f632fb3; // ERC6909
     }
 
     // INTERNAL MINT/BURN
@@ -218,20 +219,20 @@ contract Token {
 
     address internal immutable COINS = msg.sender;
 
-    mapping(address => uint256) public balanceOf;
-    mapping(address => mapping(address => uint256)) public allowance;
+    mapping(address owner => uint256) public balanceOf;
+    mapping(address owner => mapping(address spender => uint256)) public allowance;
 
     constructor(uint256 id) payable {
         (name, symbol) = (Coins(msg.sender).name(id), Coins(msg.sender).symbol(id));
     }
 
-    function approve(address to, uint256 amount) public virtual returns (bool) {
+    function approve(address to, uint256 amount) public returns (bool) {
         allowance[msg.sender][to] = amount;
         emit Approval(msg.sender, to, amount);
         return true;
     }
 
-    function transfer(address to, uint256 amount) public virtual returns (bool) {
+    function transfer(address to, uint256 amount) public returns (bool) {
         balanceOf[msg.sender] -= amount;
         unchecked {
             balanceOf[to] += amount;
@@ -240,7 +241,7 @@ contract Token {
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) public virtual returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) public returns (bool) {
         if (allowance[from][msg.sender] != type(uint256).max) allowance[from][msg.sender] -= amount;
         balanceOf[from] -= amount;
         unchecked {
@@ -250,7 +251,7 @@ contract Token {
         return true;
     }
 
-    function mint(address to, uint256 amount) public payable virtual {
+    function mint(address to, uint256 amount) public payable {
         require(msg.sender == COINS, Unauthorized());
         unchecked {
             totalSupply += amount;
@@ -259,7 +260,7 @@ contract Token {
         emit Transfer(address(0), to, amount);
     }
 
-    function burn(address from, uint256 amount) public payable virtual {
+    function burn(address from, uint256 amount) public payable {
         require(msg.sender == COINS, Unauthorized());
         balanceOf[from] -= amount;
         unchecked {
