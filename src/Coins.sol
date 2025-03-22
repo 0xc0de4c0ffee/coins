@@ -33,9 +33,7 @@ contract Coins {
         _;
     }
 
-    constructor() {
-
-    }
+    constructor() {}
 
     // COIN METADATA
 
@@ -52,7 +50,7 @@ contract Coins {
     }
 
     function totalSupply(uint256 id) public view returns (uint256) {
-        if(bytes(tokenURI[id]).length == 0){
+        if (bytes(tokenURI[id]).length == 0) {
             return Token(address(uint160(id))).totalSupply();
         }
         return _totalSupply[id];
@@ -69,11 +67,14 @@ contract Coins {
         bool _mintable
     ) public {
         require(bytes(_tokenURI).length > 0, InvalidMetadata());
-        require(bytes(_name).length != 0, InvalidMetadata());
-        require(bytes(_symbol).length != 0, InvalidMetadata());
-        address _token = _predictAddress(_name, _symbol);
+        require(bytes(_name).length > 0, InvalidMetadata());
+        require(bytes(_symbol).length > 0, InvalidMetadata());
+        address _token = address(
+            new Token{salt: keccak256(abi.encodePacked(_name, _symbol, address(this)))}(
+                _name, _symbol
+            )
+        );
         uint256 id = uint256(uint160(_token));
-        new Token{salt: bytes32(id)}(_name, _symbol);
         emit ERC20Created(_token, _name, _symbol);
         tokenURI[id] = _tokenURI;
         mintable[id] = _mintable;
@@ -81,7 +82,7 @@ contract Coins {
         balanceOf[owner][id] = supply;
         emit Transfer(address(0), address(0), owner, id, supply);
     }
-
+    /*
     function _predictAddress(string calldata _name, string calldata _symbol)
         internal
         view
@@ -103,7 +104,7 @@ contract Coins {
             )
         );
     }
-
+    */
     // COIN ID MINT/BURN
 
     function mint(address to, uint256 id, uint256 amount) public onlyOwnerOf(id) {
@@ -226,4 +227,3 @@ contract Coins {
             || interfaceId == 0x0f632fb3; // ERC165 Interface ID for ERC6909.
     }
 }
-

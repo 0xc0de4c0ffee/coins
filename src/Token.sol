@@ -52,7 +52,7 @@ contract Token {
     function mint(address to, uint256 amount) public payable virtual {
         require(msg.sender == COINS, Unauthorized());
         //unchecked {
-            balanceOf[to] += amount;
+        balanceOf[to] += amount;
         //}
         emit Transfer(address(0), to, amount);
     }
@@ -62,5 +62,4 @@ contract Token {
         balanceOf[from] -= amount;
         emit Transfer(from, address(0), amount);
     }
-    
 }
