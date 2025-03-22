@@ -78,6 +78,7 @@ contract Coins {
         emit ERC20Created(_token, _name, _symbol);
         tokenURI[id] = _tokenURI;
         mintable[id] = _mintable;
+        ownerOf[id] = owner;
         _totalSupply[id] = supply;
         balanceOf[owner][id] = supply;
         emit Transfer(address(0), address(0), owner, id, supply);

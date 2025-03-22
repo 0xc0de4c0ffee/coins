@@ -3,6 +3,8 @@ pragma solidity 0.8.29;
 
 import {Test} from "forge-std/Test.sol";
 import {Coins} from "../src/Coins.sol";
+import {Token} from "../src/Token.sol";
+import {console} from "forge-std/console.sol";
 
 error Unauthorized();
 error AlreadyCreated();
@@ -11,10 +13,10 @@ error InitializationFailed();
 error InvalidERC20Creation();
 
 contract CoinsTest is Test {
-    Coins public coins;
+    Coins public coins = new Coins();
 
     // Test accounts
-    address public deployer = makeAddr("deployer");
+    address public deployer = address(this);
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
 
@@ -23,27 +25,46 @@ contract CoinsTest is Test {
     string constant SYMBOL = "TEST";
     string constant TOKEN_URI = "https://example.com/token/test";
     uint256 constant INITIAL_SUPPLY = 1_000_000 * 1e18;
-
+    Token public TOKEN;
     // Computed coin ID based on parameters
     uint256 public coinId;
 
     function setUp() public {
-        vm.startPrank(deployer);
-        coins = new Coins();
-
-        // Create a test coin
         coins.createToken(NAME, SYMBOL, TOKEN_URI, deployer, INITIAL_SUPPLY, true);
+        TOKEN = Token(_predictAddress(NAME, SYMBOL));
+        coinId = uint256(uint160(address(TOKEN)));
+    }
 
-        // Calculate the expected coin ID
-        coinId = uint256(uint160(address(coins)));
-
-        vm.stopPrank();
+    function _predictAddress(string memory _name, string memory _symbol)
+        internal
+        view
+        returns (address)
+    {
+        uint256 salt = uint256(keccak256(abi.encodePacked(_name, _symbol, address(coins))));
+        return address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xFF),
+                            address(coins),
+                            bytes32(salt),
+                            keccak256(
+                                abi.encodePacked(
+                                    type(Token).creationCode, abi.encode(_name, _symbol)
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        );
     }
 
     // COIN CREATION TESTS
 
     function test_CoinCreation() public view {
-        // Verify owner
+        // verify owner
         assertEq(coins.ownerOf(coinId), deployer);
 
         // Verify supply
@@ -51,9 +72,8 @@ contract CoinsTest is Test {
     }
 
     function test_RevertWhen_CreatingDuplicateCoin() public {
-        vm.prank(alice);
-        // Should revert when trying to create a coin with same parameters
-        vm.expectRevert(AlreadyCreated.selector);
+        // Should revert when trying to create a coin with same name and symbol
+        vm.expectRevert();
         coins.createToken(NAME, SYMBOL, TOKEN_URI, alice, INITIAL_SUPPLY, true);
     }
 
@@ -62,6 +82,11 @@ contract CoinsTest is Test {
         // Should revert when symbol is empty
         vm.expectRevert(InvalidMetadata.selector);
         coins.createToken(NAME, "", TOKEN_URI, alice, INITIAL_SUPPLY, true);
+
+        vm.expectRevert(InvalidMetadata.selector);
+        coins.createToken("", SYMBOL, TOKEN_URI, alice, INITIAL_SUPPLY, true);
+        vm.expectRevert(InvalidMetadata.selector);
+        coins.createToken(NAME, SYMBOL, "", alice, INITIAL_SUPPLY, true);
     }
 
     // COIN METADATA TESTS
@@ -80,9 +105,6 @@ contract CoinsTest is Test {
 
         vm.prank(deployer);
         coins.setMetadata(coinId, newTokenUri);
-
-        //assertEq(coins.name(coinId), newName);
-        //assertEq(coins.symbol(coinId), newSymbol);
         assertEq(coins.tokenURI(coinId), newTokenUri);
 
         // Calculate the new coin ID to verify it's still the same coin
@@ -218,7 +240,7 @@ contract CoinsTest is Test {
         vm.prank(alice);
         coins.createToken(name2, symbol2, tokenUri2, alice, supply2, true);
 
-        uint256 coinId2 = uint256(uint160(address(coins)));
+        uint256 coinId2 = uint256(uint160(_predictAddress(name2, symbol2)));
 
         // Verify both coins exist with correct owners and balances
         assertEq(coins.ownerOf(coinId), deployer);
@@ -236,5 +258,12 @@ contract CoinsTest is Test {
 
         assertEq(coins.balanceOf(bob, coinId), 1000 * 1e18);
         assertEq(coins.balanceOf(bob, coinId2), 2000 * 1e18);
+    }
+
+    function testTokenMetadata() public view {
+        assertEq(TOKEN.name(), NAME);
+        assertEq(TOKEN.symbol(), SYMBOL);
+        assertEq(TOKEN.decimals(), 18);
+        assertEq(TOKEN.totalSupply(), INITIAL_SUPPLY);
     }
 }

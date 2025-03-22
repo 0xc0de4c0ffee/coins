@@ -21,7 +21,8 @@ contract Token {
     mapping(address => mapping(address => uint256)) public allowance;
 
     constructor(string memory _name, string memory _symbol) payable {
-        (name, symbol) = (_name, _symbol);
+        name = _name;
+        symbol = _symbol;
     }
 
     function approve(address to, uint256 amount) public virtual returns (bool) {
