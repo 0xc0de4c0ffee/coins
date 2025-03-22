@@ -132,14 +132,18 @@ contract Coins {
 
     // COIN ID WRAPPING
 
-    function wrap(address token, uint256 amount) public {
-        Token(token).transferFrom(msg.sender, address(this), amount);
-        _mint(msg.sender, uint256(uint160(token)), amount);
+    function wrap(Token token, uint256 amount) public {
+        uint256 id = uint256(uint160(address(token)));
+        if (bytes(_metadata[id].symbol).length == 0) {
+            _metadata[id] = Metadata(token.name(), token.symbol(), "");
+        }
+        token.transferFrom(msg.sender, address(this), amount);
+        _mint(msg.sender, id, amount);
     }
 
-    function unwrap(address token, uint256 amount) public {
-        _burn(msg.sender, uint256(uint160(token)), amount);
-        Token(token).transfer(msg.sender, amount);
+    function unwrap(Token token, uint256 amount) public {
+        _burn(msg.sender, uint256(uint160(address(token))), amount);
+        token.transfer(msg.sender, amount);
     }
 
     // ERC6909
@@ -169,9 +173,9 @@ contract Coins {
         return true;
     }
 
-    function approve(address to, uint256 id, uint256 amount) public returns (bool) {
-        allowance[msg.sender][to][id] = amount;
-        emit Approval(msg.sender, to, id, amount);
+    function approve(address spender, uint256 id, uint256 amount) public returns (bool) {
+        allowance[msg.sender][spender][id] = amount;
+        emit Approval(msg.sender, spender, id, amount);
         return true;
     }
 
@@ -208,8 +212,8 @@ contract Coins {
 }
 
 contract Token {
-    event Approval(address indexed from, address indexed to, uint256 amount);
-    event Transfer(address indexed from, address indexed to, uint256 amount);
+    event Approval(address indexed, address indexed, uint256);
+    event Transfer(address indexed, address indexed, uint256);
 
     string public name;
     string public symbol;
@@ -226,9 +230,9 @@ contract Token {
         (name, symbol) = (Coins(msg.sender).name(id), Coins(msg.sender).symbol(id));
     }
 
-    function approve(address to, uint256 amount) public returns (bool) {
-        allowance[msg.sender][to] = amount;
-        emit Approval(msg.sender, to, amount);
+    function approve(address spender, uint256 amount) public returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
         return true;
     }
 
