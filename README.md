@@ -1,10 +1,10 @@
-# [zenplate](https://github.com/z0r0z/zenplate)  [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL-black.svg)](https://opensource.org/license/agpl-v3/) [![solidity](https://img.shields.io/badge/solidity-%5E0.8.25-black)](https://docs.soliditylang.org/en/v0.8.25/) [![Foundry](https://img.shields.io/badge/Built%20with-Foundry-000000.svg)](https://getfoundry.sh/) ![tests](https://github.com/z0r0z/zenplate/actions/workflows/ci.yml/badge.svg)
+# [Coins](https://github.com/z0r0z/coins)  [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](https://opensource.org/license/mit/) [![solidity](https://img.shields.io/badge/solidity-%5E0.8.29-black)](https://docs.soliditylang.org/en/v0.8.25/) [![Foundry](https://img.shields.io/badge/Built%20with-Foundry-000000.svg)](https://getfoundry.sh/) ![tests](https://github.com/z0r0z/coins/actions/workflows/ci.yml/badge.svg)
 
-Simpler foundry template.
+Hyper-minimal fungible token singleton built on ERC6909 with two-way compatibility with ERC20.
+
+![diagram](diagram.png)
 
 ## Getting Started
-
-Click [`use this template`](https://github.com/z0r0z/zenplate/generate) to start.
 
 Run: `curl -L https://foundry.paradigm.xyz | bash && source ~/.bashrc && foundryup`
 
@@ -14,23 +14,17 @@ Build the foundry project with `forge build`. Run tests with `forge test`. Measu
 
 Contracts will be tested and gas measured on every push and pull request.
 
-You can edit the CI script in [.github/workflows/ci.yml](./.github/workflows/ci.yml).
-
 ## Blueprint
 
 ```txt
 lib
 ├─ forge-std — https://github.com/foundry-rs/forge-std
+├─ solady — https://github.com/vectorized/solady
 src
-├─ Tester — Tester Contract
+├─ Coins — Coins Contract
 test
-└─ Tester.t - Test Contract
+└─ Coins.t - Coins Test Contract
 ```
-
-## Notable Mentions
-
-- [femplate](https://github.com/refcell/femplate)
-- [prb-foundry-template](https://github.dev/PaulRBerg/foundry-template)
 
 ## Disclaimer
 
