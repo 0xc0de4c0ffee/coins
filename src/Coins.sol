@@ -5,6 +5,7 @@ error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
 error Unwrappable();
+error ExternalToken();
 
 contract Coins {
     event MetadataSet(uint256 indexed);
@@ -62,7 +63,7 @@ contract Coins {
         address owner,
         uint256 supply
     ) public {
-        require(bytes(_symbol).length != 0, InvalidMetadata()); // Must have ticker.
+        require(bytes(_symbol).length != 0, ExternalToken()); // Must have ticker.
         uint256 id = uint160(_predictAddress(_name, _symbol));
         require(bytes(_metadata[id].symbol).length == 0, AlreadyCreated()); // New.
         _metadata[id] = Metadata(_name, _symbol, _tokenURI);
@@ -72,25 +73,30 @@ contract Coins {
     // CREATE2 ERC20 TOKENS
 
     function createToken(uint256 id) public {
-        require(bytes(_metadata[id].symbol).length != 0, InvalidMetadata());
-        bytes32 salt = keccak256(abi.encodePacked(_metadata[id].name, _metadata[id].symbol, address(this)));
+        require(bytes(_metadata[id].tokenURI).length != 0, ExternalToken());
+        bytes32 salt =
+            keccak256(abi.encodePacked(_metadata[id].name, _metadata[id].symbol, address(this)));
         new Token{salt: salt}();
         emit ERC20Created(id);
     }
 
     function tokenize(uint256 id, uint256 amount) public {
-        require(bytes(_metadata[id].tokenURI).length != 0, InvalidMetadata());
+        require(bytes(_metadata[id].tokenURI).length != 0, ExternalToken());
         _burn(msg.sender, id, amount);
         Token(address(uint160(id))).mint(msg.sender, amount);
     }
 
     function untokenize(uint256 id, uint256 amount) public {
-        require(bytes(_metadata[id].tokenURI).length != 0, InvalidMetadata());
+        require(bytes(_metadata[id].tokenURI).length != 0, ExternalToken());
         Token(address(uint160(id))).burn(msg.sender, amount);
         _mint(msg.sender, id, amount);
     }
 
-    function _predictAddress(string memory _name, string memory _symbol) public view returns (address) {
+    function _predictAddress(string memory _name, string memory _symbol)
+        public
+        view
+        returns (address)
+    {
         bytes32 salt = keccak256(abi.encodePacked(_name, _symbol, address(this)));
         return address(
             uint160(
@@ -120,10 +126,7 @@ contract Coins {
 
     // COIN ID GOVERNANCE
 
-    function setMetadata(
-        uint256 id,
-        string calldata _tokenURI
-    ) public onlyOwnerOf(id) {
+    function setMetadata(uint256 id, string calldata _tokenURI) public onlyOwnerOf(id) {
         require(bytes(_metadata[id].symbol).length != 0, InvalidMetadata());
         _metadata[id].tokenURI = _tokenURI;
         emit MetadataSet(id);

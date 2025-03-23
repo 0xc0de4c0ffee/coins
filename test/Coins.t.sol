@@ -4,11 +4,13 @@ pragma solidity 0.8.29;
 import {Test} from "forge-std/Test.sol";
 import {Coins, Token} from "../src/Coins.sol";
 import "forge-std/console.sol";
+import {MockERC20} from "./mock/MockERC20.sol";
 
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
 error Unwrappable();
+error ExternalToken();
 
 contract CoinsTest is Test {
     Coins public coins;
@@ -36,7 +38,7 @@ contract CoinsTest is Test {
 
         // Calculate the expected coin ID
         coinId = uint160(coins._predictAddress(NAME, SYMBOL));
-       //console.log("coinId", address(uint160(coinId)));
+        //console.log("coinId", address(uint160(coinId)));
         vm.stopPrank();
     }
 
@@ -60,7 +62,7 @@ contract CoinsTest is Test {
     function test_RevertWhen_CreatingWithEmptySymbol() public {
         vm.prank(alice);
         // Should revert when symbol is empty
-        vm.expectRevert(InvalidMetadata.selector);
+        vm.expectRevert(ExternalToken.selector);
         coins.create(NAME, "", TOKEN_URI, alice, INITIAL_SUPPLY);
     }
 
@@ -245,10 +247,32 @@ contract CoinsTest is Test {
         vm.stopPrank();
 
         // Internal token should not be wrappable
-        vm.expectRevert(Unwrappable.selector);        
+        vm.expectRevert(Unwrappable.selector);
         coins.wrap(Token(address(uint160(coinId))), 1000 * 1e18);
         // Internal token should not be unwrappable
-        vm.expectRevert(Unwrappable.selector);        
+        vm.expectRevert(Unwrappable.selector);
         coins.unwrap(Token(address(uint160(coinId))), 1000 * 1e18);
+    }
+
+    function test_ExternalToken() public {
+        // Create an external token
+        vm.startPrank(deployer);
+        MockERC20 mockToken = new MockERC20("Test Token", "TEST", 18);
+        mockToken.mint(deployer, 1000 * 1e18);
+        mockToken.approve(address(coins), 1000 * 1e18);
+        coins.wrap(Token(address(mockToken)), 1000 * 1e18);
+        coins.unwrap(Token(address(mockToken)), 1000 * 1e18);
+        vm.stopPrank();
+        // External token should be tokenizable
+        vm.expectRevert(ExternalToken.selector);
+        coins.createToken(uint160(address(mockToken)));
+
+        // External token should be untokenizable
+        vm.expectRevert(ExternalToken.selector);
+        coins.tokenize(uint160(address(mockToken)), 1000 * 1e18);
+
+        // External token should be untokenizable
+        vm.expectRevert(ExternalToken.selector);
+        coins.untokenize(uint160(address(mockToken)), 1000 * 1e18);
     }
 }
