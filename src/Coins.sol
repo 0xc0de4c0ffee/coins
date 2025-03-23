@@ -4,6 +4,7 @@ pragma solidity 0.8.29;
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
+error Unwrappable();
 
 contract Coins {
     event MetadataSet(uint256 indexed);
@@ -62,7 +63,7 @@ contract Coins {
         uint256 supply
     ) public {
         require(bytes(_symbol).length != 0, InvalidMetadata()); // Must have ticker.
-        uint256 id = uint256(keccak256(abi.encodePacked(_name, _symbol, _tokenURI)));
+        uint256 id = uint160(_predictAddress(_name, _symbol));
         require(bytes(_metadata[id].symbol).length == 0, AlreadyCreated()); // New.
         _metadata[id] = Metadata(_name, _symbol, _tokenURI);
         _mint(ownerOf[id] = owner, id, supply);
@@ -72,21 +73,25 @@ contract Coins {
 
     function createToken(uint256 id) public {
         require(bytes(_metadata[id].symbol).length != 0, InvalidMetadata());
-        new Token{salt: bytes32(id)}(id);
+        bytes32 salt = keccak256(abi.encodePacked(_metadata[id].name, _metadata[id].symbol, address(this)));
+        new Token{salt: salt}();
         emit ERC20Created(id);
     }
 
     function tokenize(uint256 id, uint256 amount) public {
+        require(bytes(_metadata[id].tokenURI).length != 0, InvalidMetadata());
         _burn(msg.sender, id, amount);
-        Token(_predictAddress(id)).mint(msg.sender, amount);
+        Token(address(uint160(id))).mint(msg.sender, amount);
     }
 
     function untokenize(uint256 id, uint256 amount) public {
-        Token(_predictAddress(id)).burn(msg.sender, amount);
+        require(bytes(_metadata[id].tokenURI).length != 0, InvalidMetadata());
+        Token(address(uint160(id))).burn(msg.sender, amount);
         _mint(msg.sender, id, amount);
     }
 
-    function _predictAddress(uint256 id) internal view returns (address) {
+    function _predictAddress(string memory _name, string memory _symbol) public view returns (address) {
+        bytes32 salt = keccak256(abi.encodePacked(_name, _symbol, address(this)));
         return address(
             uint160(
                 uint256(
@@ -94,8 +99,8 @@ contract Coins {
                         abi.encodePacked(
                             bytes1(0xFF),
                             address(this),
-                            bytes32(id),
-                            keccak256(abi.encodePacked(type(Token).creationCode, abi.encode(id)))
+                            bytes32(salt),
+                            keccak256(type(Token).creationCode)
                         )
                     )
                 )
@@ -117,11 +122,10 @@ contract Coins {
 
     function setMetadata(
         uint256 id,
-        string calldata _name,
-        string calldata _symbol,
         string calldata _tokenURI
     ) public onlyOwnerOf(id) {
-        _metadata[id] = Metadata(_name, _symbol, _tokenURI);
+        require(bytes(_metadata[id].symbol).length != 0, InvalidMetadata());
+        _metadata[id].tokenURI = _tokenURI;
         emit MetadataSet(id);
     }
 
@@ -134,6 +138,7 @@ contract Coins {
 
     function wrap(Token token, uint256 amount) public {
         uint256 id = uint256(uint160(address(token)));
+        require(bytes(_metadata[id].tokenURI).length == 0, Unwrappable());
         if (bytes(_metadata[id].symbol).length == 0) {
             _metadata[id] = Metadata(token.name(), token.symbol(), "");
         }
@@ -142,7 +147,9 @@ contract Coins {
     }
 
     function unwrap(Token token, uint256 amount) public {
-        _burn(msg.sender, uint256(uint160(address(token))), amount);
+        uint256 id = uint256(uint160(address(token)));
+        require(bytes(_metadata[id].tokenURI).length == 0, Unwrappable());
+        _burn(msg.sender, id, amount);
         token.transfer(msg.sender, amount);
     }
 
@@ -226,7 +233,8 @@ contract Token {
     mapping(address owner => uint256) public balanceOf;
     mapping(address owner => mapping(address spender => uint256)) public allowance;
 
-    constructor(uint256 id) payable {
+    constructor() payable {
+        uint256 id = uint160(address(this));
         (name, symbol) = (Coins(msg.sender).name(id), Coins(msg.sender).symbol(id));
     }
 

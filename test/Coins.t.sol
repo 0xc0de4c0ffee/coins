@@ -2,11 +2,13 @@
 pragma solidity 0.8.29;
 
 import {Test} from "forge-std/Test.sol";
-import {Coins} from "../src/Coins.sol";
+import {Coins, Token} from "../src/Coins.sol";
+import "forge-std/console.sol";
 
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
+error Unwrappable();
 
 contract CoinsTest is Test {
     Coins public coins;
@@ -33,8 +35,8 @@ contract CoinsTest is Test {
         coins.create(NAME, SYMBOL, TOKEN_URI, deployer, INITIAL_SUPPLY);
 
         // Calculate the expected coin ID
-        coinId = uint256(keccak256(abi.encodePacked(NAME, SYMBOL, TOKEN_URI)));
-
+        coinId = uint160(coins._predictAddress(NAME, SYMBOL));
+       //console.log("coinId", address(uint160(coinId)));
         vm.stopPrank();
     }
 
@@ -72,30 +74,26 @@ contract CoinsTest is Test {
     }
 
     function test_SetMetadata() public {
-        string memory newName = "Updated Coin";
-        string memory newSymbol = "UPD";
         string memory newTokenUri = "https://example.com/token/updated";
 
         vm.prank(deployer);
-        coins.setMetadata(coinId, newName, newSymbol, newTokenUri);
+        coins.setMetadata(coinId, newTokenUri);
 
-        assertEq(coins.name(coinId), newName);
-        assertEq(coins.symbol(coinId), newSymbol);
         assertEq(coins.tokenURI(coinId), newTokenUri);
 
         // Calculate the new coin ID to verify it's still the same coin
-        uint256 newCoinId = uint256(keccak256(abi.encodePacked(newName, newSymbol, newTokenUri)));
+        uint256 newCoinId = uint160(coins._predictAddress(NAME, SYMBOL));
 
         // Verify that changing metadata doesn't create a new coin ID
         assertEq(coins.balanceOf(deployer, coinId), INITIAL_SUPPLY);
-        assertEq(coins.balanceOf(deployer, newCoinId), 0);
+        assertEq(coins.balanceOf(deployer, newCoinId), INITIAL_SUPPLY);
     }
 
     function test_RevertWhen_UnauthorizedMetadataUpdate() public {
         vm.prank(alice);
         // Should revert when non-owner tries to update metadata
         vm.expectRevert(); // Just tests for any revert
-        coins.setMetadata(coinId, "Hacked Coin", "HACK", "https://evil.com");
+        coins.setMetadata(coinId, "https://evil.com");
     }
 
     // OWNERSHIP TESTS
@@ -108,12 +106,12 @@ contract CoinsTest is Test {
 
         // Verify new owner can update metadata
         vm.prank(alice);
-        coins.setMetadata(coinId, "Alice Coin", "ALICE", "https://alice.com");
+        coins.setMetadata(coinId, "https://alice.com");
 
         // Original owner should no longer have permission
         vm.expectRevert();
         vm.prank(deployer);
-        coins.setMetadata(coinId, "Deployer Coin", "DEPLOY", "https://deployer.com");
+        coins.setMetadata(coinId, "https://deployer.com");
     }
 
     function test_RevertWhen_UnauthorizedOwnershipTransfer() public {
@@ -216,7 +214,7 @@ contract CoinsTest is Test {
         vm.prank(alice);
         coins.create(name2, symbol2, tokenUri2, alice, supply2);
 
-        uint256 coinId2 = uint256(keccak256(abi.encodePacked(name2, symbol2, tokenUri2)));
+        uint256 coinId2 = uint160(coins._predictAddress(name2, symbol2));
 
         // Verify both coins exist with correct owners and balances
         assertEq(coins.ownerOf(coinId), deployer);
@@ -234,5 +232,23 @@ contract CoinsTest is Test {
 
         assertEq(coins.balanceOf(bob, coinId), 1000 * 1e18);
         assertEq(coins.balanceOf(bob, coinId2), 2000 * 1e18);
+    }
+
+    function test_InternalToken() public {
+        console.log("coinId", address(uint160(coinId)));
+        coins.createToken(coinId);
+        vm.startPrank(deployer);
+        // Internal token should be tokenizable
+        coins.tokenize(coinId, 1000 * 1e18);
+        // Internal token should be untokenizable
+        coins.untokenize(coinId, 1000 * 1e18);
+        vm.stopPrank();
+
+        // Internal token should not be wrappable
+        vm.expectRevert(Unwrappable.selector);        
+        coins.wrap(Token(address(uint160(coinId))), 1000 * 1e18);
+        // Internal token should not be unwrappable
+        vm.expectRevert(Unwrappable.selector);        
+        coins.unwrap(Token(address(uint160(coinId))), 1000 * 1e18);
     }
 }
