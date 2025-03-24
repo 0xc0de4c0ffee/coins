@@ -9,8 +9,8 @@ import {MockERC20} from "./mock/MockERC20.sol";
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
-error InternalToken();
-error ExternalToken();
+error OnlyExternal();
+error OnlyNative();
 
 contract CoinsTest is Test {
     Coins public coins;
@@ -76,7 +76,7 @@ contract CoinsTest is Test {
     function test_RevertWhen_CreatingWithEmptySymbol() public {
         vm.prank(alice);
         // Should revert when symbol is empty
-        vm.expectRevert(ExternalToken.selector);
+        vm.expectRevert(OnlyNative.selector);
         coins.create(NAME, "", TOKEN_URI, alice, INITIAL_SUPPLY);
     }
 
@@ -250,21 +250,21 @@ contract CoinsTest is Test {
         assertEq(coins.balanceOf(bob, coinId2), 2000 * 1e18);
     }
 
-    function test_InternalToken() public {
+    function test_NativeToken() public {
         console.log("coinId", address(uint160(coinId)));
         coins.createToken(coinId);
         vm.startPrank(deployer);
-        // Internal token should be tokenizable
+        // Native token should be tokenizable
         coins.tokenize(coinId, 1000 * 1e18);
-        // Internal token should be untokenizable
+        // Native token should be untokenizable
         coins.untokenize(coinId, 1000 * 1e18);
         vm.stopPrank();
 
-        // Internal token should not be wrappable
-        vm.expectRevert(InternalToken.selector);
+        // Native token should not be wrappable
+        vm.expectRevert(OnlyExternal.selector);
         coins.wrap(Token(address(uint160(coinId))), 1000 * 1e18);
-        // Internal token should not be InternalToken
-        vm.expectRevert(InternalToken.selector);
+        // Native token should not be unwrappable
+        vm.expectRevert(OnlyExternal.selector);
         coins.unwrap(Token(address(uint160(coinId))), 1000 * 1e18);
     }
 
@@ -277,16 +277,16 @@ contract CoinsTest is Test {
         coins.wrap(Token(address(mockToken)), 1000 * 1e18);
         coins.unwrap(Token(address(mockToken)), 1000 * 1e18);
         vm.stopPrank();
-        // External token should Not be tokenizable
-        vm.expectRevert(ExternalToken.selector);
+        // External token should Not be deployed
+        vm.expectRevert(OnlyNative.selector);
         coins.createToken(uint160(address(mockToken)));
 
         // External token should Not be tokenizable
-        vm.expectRevert(ExternalToken.selector);
+        vm.expectRevert(OnlyNative.selector);
         coins.tokenize(uint160(address(mockToken)), 1000 * 1e18);
 
         // External token should Not be untokenizable
-        vm.expectRevert(ExternalToken.selector);
+        vm.expectRevert(OnlyNative.selector);
         coins.untokenize(uint160(address(mockToken)), 1000 * 1e18);
     }
 }

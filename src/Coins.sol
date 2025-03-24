@@ -4,8 +4,8 @@ pragma solidity 0.8.29;
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
-error InternalToken();
-error ExternalToken();
+error OnlyExternal();
+error OnlyNative();
 
 contract Coins {
     event MetadataSet(uint256 indexed);
@@ -40,15 +40,15 @@ contract Coins {
     }
 
     function name(uint256 id) public view returns (string memory) {
-        return _metadata[id].name;
+        return _metadata[id].native ? _metadata[id].name : Token(address(uint160(id))).name();
     }
 
     function symbol(uint256 id) public view returns (string memory) {
-        return _metadata[id].symbol;
+        return _metadata[id].native ? _metadata[id].symbol : Token(address(uint160(id))).symbol();
     }
 
-    function decimals(uint256) public pure returns (uint8) {
-        return 18;
+    function decimals(uint256 id) public view returns (uint8) {
+        return _metadata[id].native ? 18 : Token(address(uint160(id))).decimals();
     }
 
     function tokenURI(uint256 id) public view returns (string memory) {
@@ -64,7 +64,7 @@ contract Coins {
         address owner,
         uint256 supply
     ) public {
-        require(bytes(_symbol).length != 0, ExternalToken()); // Must have ticker.
+        require(bytes(_symbol).length != 0, OnlyNative()); // Must have ticker.
         uint256 id = uint160(_predictAddress(keccak256(abi.encodePacked(_name, _symbol))));
         require(!_metadata[id].native, AlreadyCreated()); // New.
         _metadata[id] = Metadata(_name, _symbol, _tokenURI, true);
@@ -74,19 +74,19 @@ contract Coins {
     // CREATE2 ERC20 TOKENS
 
     function createToken(uint256 id) public {
-        require(_metadata[id].native, ExternalToken());
+        require(_metadata[id].native, OnlyNative());
         new Token{salt: keccak256(abi.encodePacked(_metadata[id].name, _metadata[id].symbol))}();
         emit ERC20Created(id);
     }
 
     function tokenize(uint256 id, uint256 amount) public {
-        require(_metadata[id].native, ExternalToken());
+        require(_metadata[id].native, OnlyNative());
         _burn(msg.sender, id, amount);
         Token(address(uint160(id))).mint(msg.sender, amount);
     }
 
     function untokenize(uint256 id, uint256 amount) public {
-        require(_metadata[id].native, ExternalToken());
+        require(_metadata[id].native, OnlyNative());
         Token(address(uint160(id))).burn(msg.sender, amount);
         _mint(msg.sender, id, amount);
     }
@@ -131,17 +131,15 @@ contract Coins {
 
     function wrap(Token token, uint256 amount) public {
         uint256 id = uint256(uint160(address(token)));
-        require(!_metadata[id].native, InternalToken());
-        if (bytes(_metadata[id].symbol).length == 0) {
-            _metadata[id] = Metadata(token.name(), token.symbol(), "", false);
-        }
+        require(!_metadata[id].native, OnlyExternal());
+        // ?? check if erc721?
         token.transferFrom(msg.sender, address(this), amount);
         _mint(msg.sender, id, amount);
     }
 
     function unwrap(Token token, uint256 amount) public {
         uint256 id = uint256(uint160(address(token)));
-        require(!_metadata[id].native, InternalToken());
+        require(!_metadata[id].native, OnlyExternal());
         _burn(msg.sender, id, amount);
         token.transfer(msg.sender, amount);
     }
@@ -217,7 +215,7 @@ contract Token {
     event Approval(address indexed, address indexed, uint256);
     event Transfer(address indexed, address indexed, uint256);
 
-    uint256 public constant decimals = 18;
+    uint8 public constant decimals = 18;
 
     uint256 public totalSupply;
 
