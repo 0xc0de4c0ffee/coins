@@ -255,8 +255,9 @@ contract Token {
     }
 
     function transferFrom(address from, address to, uint256 amount) public returns (bool) {
-        if (allowance[from][msg.sender] != type(uint256).max) 
+        if (allowance[from][msg.sender] != type(uint256).max) {
             allowance[from][msg.sender] -= amount;
+        }
         balanceOf[from] -= amount;
         unchecked {
             balanceOf[to] += amount;

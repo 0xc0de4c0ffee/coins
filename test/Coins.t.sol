@@ -76,7 +76,7 @@ contract CoinsTest is Test {
     function test_RevertWhen_CreatingWithEmptySymbol() public {
         vm.prank(alice);
         // Should revert when symbol is empty
-        vm.expectRevert(OnlyNative.selector);
+        vm.expectRevert(InvalidMetadata.selector);
         coins.create(NAME, "", TOKEN_URI, alice, INITIAL_SUPPLY);
     }
 
