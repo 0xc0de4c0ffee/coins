@@ -4,7 +4,7 @@ pragma solidity 0.8.29;
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
-error Unwrappable();
+error InternalToken();
 error ExternalToken();
 
 contract Coins {
@@ -36,6 +36,7 @@ contract Coins {
         string name;
         string symbol;
         string tokenURI;
+        bool native;
     }
 
     function name(uint256 id) public view returns (string memory) {
@@ -64,49 +65,39 @@ contract Coins {
         uint256 supply
     ) public {
         require(bytes(_symbol).length != 0, ExternalToken()); // Must have ticker.
-        uint256 id = uint160(_predictAddress(_name, _symbol));
-        require(bytes(_metadata[id].symbol).length == 0, AlreadyCreated()); // New.
-        _metadata[id] = Metadata(_name, _symbol, _tokenURI);
+        uint256 id = uint160(_predictAddress(keccak256(abi.encodePacked(_name, _symbol))));
+        require(!_metadata[id].native, AlreadyCreated()); // New.
+        _metadata[id] = Metadata(_name, _symbol, _tokenURI, true);
         _mint(ownerOf[id] = owner, id, supply);
     }
 
     // CREATE2 ERC20 TOKENS
 
     function createToken(uint256 id) public {
-        require(bytes(_metadata[id].tokenURI).length != 0, ExternalToken());
-        bytes32 salt =
-            keccak256(abi.encodePacked(_metadata[id].name, _metadata[id].symbol, address(this)));
-        new Token{salt: salt}();
+        require(_metadata[id].native, ExternalToken());
+        new Token{salt: keccak256(abi.encodePacked(_metadata[id].name, _metadata[id].symbol))}();
         emit ERC20Created(id);
     }
 
     function tokenize(uint256 id, uint256 amount) public {
-        require(bytes(_metadata[id].tokenURI).length != 0, ExternalToken());
+        require(_metadata[id].native, ExternalToken());
         _burn(msg.sender, id, amount);
         Token(address(uint160(id))).mint(msg.sender, amount);
     }
 
     function untokenize(uint256 id, uint256 amount) public {
-        require(bytes(_metadata[id].tokenURI).length != 0, ExternalToken());
+        require(_metadata[id].native, ExternalToken());
         Token(address(uint160(id))).burn(msg.sender, amount);
         _mint(msg.sender, id, amount);
     }
 
-    function _predictAddress(string memory _name, string memory _symbol)
-        public
-        view
-        returns (address)
-    {
-        bytes32 salt = keccak256(abi.encodePacked(_name, _symbol, address(this)));
+    function _predictAddress(bytes32 _salt) internal view returns (address) {
         return address(
             uint160(
                 uint256(
                     keccak256(
                         abi.encodePacked(
-                            bytes1(0xFF),
-                            address(this),
-                            bytes32(salt),
-                            keccak256(type(Token).creationCode)
+                            bytes1(0xFF), address(this), _salt, keccak256(type(Token).creationCode)
                         )
                     )
                 )
@@ -127,7 +118,6 @@ contract Coins {
     // COIN ID GOVERNANCE
 
     function setMetadata(uint256 id, string calldata _tokenURI) public onlyOwnerOf(id) {
-        require(bytes(_metadata[id].symbol).length != 0, InvalidMetadata());
         _metadata[id].tokenURI = _tokenURI;
         emit MetadataSet(id);
     }
@@ -141,9 +131,9 @@ contract Coins {
 
     function wrap(Token token, uint256 amount) public {
         uint256 id = uint256(uint160(address(token)));
-        require(bytes(_metadata[id].tokenURI).length == 0, Unwrappable());
+        require(!_metadata[id].native, InternalToken());
         if (bytes(_metadata[id].symbol).length == 0) {
-            _metadata[id] = Metadata(token.name(), token.symbol(), "");
+            _metadata[id] = Metadata(token.name(), token.symbol(), "", false);
         }
         token.transferFrom(msg.sender, address(this), amount);
         _mint(msg.sender, id, amount);
@@ -151,7 +141,7 @@ contract Coins {
 
     function unwrap(Token token, uint256 amount) public {
         uint256 id = uint256(uint160(address(token)));
-        require(bytes(_metadata[id].tokenURI).length == 0, Unwrappable());
+        require(!_metadata[id].native, InternalToken());
         _burn(msg.sender, id, amount);
         token.transfer(msg.sender, amount);
     }
@@ -173,7 +163,9 @@ contract Coins {
     {
         if (msg.sender != from && !isOperator[from][msg.sender]) {
             uint256 allowed = allowance[from][msg.sender][id];
-            if (allowed != type(uint256).max) allowance[from][msg.sender][id] = allowed - amount;
+            if (allowed != type(uint256).max) {
+                allowance[from][msg.sender][id] = allowed - amount;
+            }
         }
         balanceOf[from][id] -= amount;
         unchecked {
@@ -225,8 +217,6 @@ contract Token {
     event Approval(address indexed, address indexed, uint256);
     event Transfer(address indexed, address indexed, uint256);
 
-    string public name;
-    string public symbol;
     uint256 public constant decimals = 18;
 
     uint256 public totalSupply;
@@ -236,9 +226,12 @@ contract Token {
     mapping(address owner => uint256) public balanceOf;
     mapping(address owner => mapping(address spender => uint256)) public allowance;
 
-    constructor() payable {
-        uint256 id = uint160(address(this));
-        (name, symbol) = (Coins(msg.sender).name(id), Coins(msg.sender).symbol(id));
+    function name() public view returns (string memory) {
+        return Coins(COINS).name(uint160(address(this)));
+    }
+
+    function symbol() public view returns (string memory) {
+        return Coins(COINS).symbol(uint160(address(this)));
     }
 
     function approve(address spender, uint256 amount) public returns (bool) {
@@ -257,7 +250,9 @@ contract Token {
     }
 
     function transferFrom(address from, address to, uint256 amount) public returns (bool) {
-        if (allowance[from][msg.sender] != type(uint256).max) allowance[from][msg.sender] -= amount;
+        if (allowance[from][msg.sender] != type(uint256).max) {
+            allowance[from][msg.sender] -= amount;
+        }
         balanceOf[from] -= amount;
         unchecked {
             balanceOf[to] += amount;

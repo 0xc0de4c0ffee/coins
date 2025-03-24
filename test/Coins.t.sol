@@ -9,7 +9,7 @@ import {MockERC20} from "./mock/MockERC20.sol";
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
-error Unwrappable();
+error InternalToken();
 error ExternalToken();
 
 contract CoinsTest is Test {
@@ -29,6 +29,20 @@ contract CoinsTest is Test {
     // Computed coin ID based on parameters
     uint256 public coinId;
 
+    function _predictAddress(bytes32 _salt) internal view returns (address) {
+        return address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xFF), address(coins), _salt, keccak256(type(Token).creationCode)
+                        )
+                    )
+                )
+            )
+        );
+    }
+
     function setUp() public {
         vm.startPrank(deployer);
         coins = new Coins();
@@ -37,7 +51,7 @@ contract CoinsTest is Test {
         coins.create(NAME, SYMBOL, TOKEN_URI, deployer, INITIAL_SUPPLY);
 
         // Calculate the expected coin ID
-        coinId = uint160(coins._predictAddress(NAME, SYMBOL));
+        coinId = uint160(_predictAddress(keccak256(abi.encodePacked(NAME, SYMBOL))));
         //console.log("coinId", address(uint160(coinId)));
         vm.stopPrank();
     }
@@ -84,7 +98,7 @@ contract CoinsTest is Test {
         assertEq(coins.tokenURI(coinId), newTokenUri);
 
         // Calculate the new coin ID to verify it's still the same coin
-        uint256 newCoinId = uint160(coins._predictAddress(NAME, SYMBOL));
+        uint256 newCoinId = uint160(_predictAddress(keccak256(abi.encodePacked(NAME, SYMBOL))));
 
         // Verify that changing metadata doesn't create a new coin ID
         assertEq(coins.balanceOf(deployer, coinId), INITIAL_SUPPLY);
@@ -216,7 +230,7 @@ contract CoinsTest is Test {
         vm.prank(alice);
         coins.create(name2, symbol2, tokenUri2, alice, supply2);
 
-        uint256 coinId2 = uint160(coins._predictAddress(name2, symbol2));
+        uint256 coinId2 = uint160(_predictAddress(keccak256(abi.encodePacked(name2, symbol2))));
 
         // Verify both coins exist with correct owners and balances
         assertEq(coins.ownerOf(coinId), deployer);
@@ -247,10 +261,10 @@ contract CoinsTest is Test {
         vm.stopPrank();
 
         // Internal token should not be wrappable
-        vm.expectRevert(Unwrappable.selector);
+        vm.expectRevert(InternalToken.selector);
         coins.wrap(Token(address(uint160(coinId))), 1000 * 1e18);
-        // Internal token should not be unwrappable
-        vm.expectRevert(Unwrappable.selector);
+        // Internal token should not be InternalToken
+        vm.expectRevert(InternalToken.selector);
         coins.unwrap(Token(address(uint160(coinId))), 1000 * 1e18);
     }
 
@@ -263,15 +277,15 @@ contract CoinsTest is Test {
         coins.wrap(Token(address(mockToken)), 1000 * 1e18);
         coins.unwrap(Token(address(mockToken)), 1000 * 1e18);
         vm.stopPrank();
-        // External token should be tokenizable
+        // External token should Not be tokenizable
         vm.expectRevert(ExternalToken.selector);
         coins.createToken(uint160(address(mockToken)));
 
-        // External token should be untokenizable
+        // External token should Not be tokenizable
         vm.expectRevert(ExternalToken.selector);
         coins.tokenize(uint160(address(mockToken)), 1000 * 1e18);
 
-        // External token should be untokenizable
+        // External token should Not be untokenizable
         vm.expectRevert(ExternalToken.selector);
         coins.untokenize(uint160(address(mockToken)), 1000 * 1e18);
     }
