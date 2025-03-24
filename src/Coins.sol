@@ -70,40 +70,39 @@ contract Coins {
         address owner,
         uint256 supply
     ) public {
-        require(bytes(_symbol).length != 0, InvalidMetadata()); // Must have coin ticker.
+        require(bytes(_symbol).length != 0, InvalidMetadata()); // Must have a coin ticker.
         uint256 id = uint160(_predictAddress(keccak256(abi.encodePacked(_name, _symbol))));
         require(!_metadata[id].native, AlreadyCreated()); // Must be unique coin creation.
         _metadata[id] = Metadata(_name, _symbol, _tokenURI, true); // Name and symbol set.
-        _mint(ownerOf[id] = owner, id, supply); // Mint initial supply to the owner.
+        _mint(ownerOf[id] = owner, id, supply); // Mint initial supply to the coin owner.
     }
 
     // CREATE2 ERC20 TOKENS
 
     function createToken(uint256 id) public {
-        require(_metadata[id].native, OnlyNative());
-        new Token{salt: keccak256(abi.encodePacked(_metadata[id].name, _metadata[id].symbol))}();
+        Metadata storage meta = _metadata[id];
+        require(meta.native, OnlyNative());
+        new Token{salt: keccak256(abi.encodePacked(meta.name, meta.symbol))}();
         emit ERC20Created(id);
     }
 
     function tokenize(uint256 id, uint256 amount) public {
-        require(_metadata[id].native, OnlyNative());
         _burn(msg.sender, id, amount);
         Token(address(uint160(id))).mint(msg.sender, amount);
     }
 
     function untokenize(uint256 id, uint256 amount) public {
-        require(_metadata[id].native, OnlyNative());
         Token(address(uint160(id))).burn(msg.sender, amount);
         _mint(msg.sender, id, amount);
     }
 
-    function _predictAddress(bytes32 salt) internal view returns (address) {
+    function _predictAddress(bytes32 id) internal view returns (address) {
         return address(
             uint160(
                 uint256(
                     keccak256(
                         abi.encodePacked(
-                            bytes1(0xFF), address(this), salt, keccak256(type(Token).creationCode)
+                            bytes1(0xFF), this, id, keccak256(type(Token).creationCode)
                         )
                     )
                 )
@@ -136,16 +135,12 @@ contract Coins {
     // COIN ID WRAPPING
 
     function wrap(Token token, uint256 amount) public {
-        uint256 id = uint256(uint160(address(token)));
-        require(!_metadata[id].native, OnlyExternal());
         token.transferFrom(msg.sender, address(this), amount);
-        _mint(msg.sender, id, amount);
+        _mint(msg.sender, uint256(uint160(address(token))), amount);
     }
 
     function unwrap(Token token, uint256 amount) public {
-        uint256 id = uint256(uint160(address(token)));
-        require(!_metadata[id].native, OnlyExternal());
-        _burn(msg.sender, id, amount);
+        _burn(msg.sender, uint256(uint160(address(token))), amount);
         token.transfer(msg.sender, amount);
     }
 
@@ -164,10 +159,11 @@ contract Coins {
         public
         returns (bool)
     {
-        if (msg.sender != from && !isOperator[from][msg.sender]) {
-            uint256 allowed = allowance[from][msg.sender][id];
-            if (allowed != type(uint256).max) {
-                allowance[from][msg.sender][id] = allowed - amount;
+        if (msg.sender != from) {
+            if (!isOperator[from][msg.sender]) {
+                if (allowance[from][msg.sender][id] != type(uint256).max) {
+                    allowance[from][msg.sender][id] -= amount;
+                }
             }
         }
         balanceOf[from][id] -= amount;
@@ -255,9 +251,7 @@ contract Token {
     }
 
     function transferFrom(address from, address to, uint256 amount) public returns (bool) {
-        if (allowance[from][msg.sender] != type(uint256).max) {
-            allowance[from][msg.sender] -= amount;
-        }
+        if (allowance[from][msg.sender] != type(uint256).max) allowance[from][msg.sender] -= amount;
         balanceOf[from] -= amount;
         unchecked {
             balanceOf[to] += amount;

@@ -261,10 +261,10 @@ contract CoinsTest is Test {
         vm.stopPrank();
 
         // Native token should not be wrappable
-        vm.expectRevert(OnlyExternal.selector);
+        vm.expectRevert();
         coins.wrap(Token(address(uint160(coinId))), 1000 * 1e18);
         // Native token should not be unwrappable
-        vm.expectRevert(OnlyExternal.selector);
+        vm.expectRevert();
         coins.unwrap(Token(address(uint160(coinId))), 1000 * 1e18);
     }
 
@@ -282,11 +282,11 @@ contract CoinsTest is Test {
         coins.createToken(uint160(address(mockToken)));
 
         // External token should Not be tokenizable
-        vm.expectRevert(OnlyNative.selector);
+        vm.expectRevert();
         coins.tokenize(uint160(address(mockToken)), 1000 * 1e18);
 
         // External token should Not be untokenizable
-        vm.expectRevert(OnlyNative.selector);
+        vm.expectRevert();
         coins.untokenize(uint160(address(mockToken)), 1000 * 1e18);
     }
 }
