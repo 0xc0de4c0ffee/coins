@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.29;
 
+error OnlyNative();
+error OnlyExternal();
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
-error OnlyExternal();
-error OnlyNative();
 
+/// @title Coins
+/// @notice Singleton for tokens
+/// @author z0r0z & 0xc0de4c0ffee
 contract Coins {
     event MetadataSet(uint256 indexed);
     event ERC20Created(uint256 indexed);
@@ -17,8 +20,9 @@ contract Coins {
     event Transfer(address, address indexed, address indexed, uint256 indexed, uint256);
 
     mapping(uint256 id => Metadata) internal _metadata;
-    mapping(uint256 id => address owner) public ownerOf;
+
     mapping(uint256 id => uint256) public totalSupply;
+    mapping(uint256 id => address owner) public ownerOf;
 
     mapping(address owner => mapping(uint256 id => uint256)) public balanceOf;
     mapping(address owner => mapping(address operator => bool)) public isOperator;
@@ -29,6 +33,8 @@ contract Coins {
         require(msg.sender == ownerOf[id], Unauthorized());
         _;
     }
+
+    constructor() payable {}
 
     // COIN METADATA
 
@@ -64,11 +70,11 @@ contract Coins {
         address owner,
         uint256 supply
     ) public {
-        require(bytes(_symbol).length != 0, OnlyNative()); // Must have ticker.
+        require(bytes(_symbol).length != 0, InvalidMetadata()); // Must have coin ticker.
         uint256 id = uint160(_predictAddress(keccak256(abi.encodePacked(_name, _symbol))));
-        require(!_metadata[id].native, AlreadyCreated()); // New.
-        _metadata[id] = Metadata(_name, _symbol, _tokenURI, true);
-        _mint(ownerOf[id] = owner, id, supply);
+        require(!_metadata[id].native, AlreadyCreated()); // Must be unique coin creation.
+        _metadata[id] = Metadata(_name, _symbol, _tokenURI, true); // Name and symbol set.
+        _mint(ownerOf[id] = owner, id, supply); // Mint initial supply to the owner.
     }
 
     // CREATE2 ERC20 TOKENS
@@ -91,13 +97,13 @@ contract Coins {
         _mint(msg.sender, id, amount);
     }
 
-    function _predictAddress(bytes32 _salt) internal view returns (address) {
+    function _predictAddress(bytes32 salt) internal view returns (address) {
         return address(
             uint160(
                 uint256(
                     keccak256(
                         abi.encodePacked(
-                            bytes1(0xFF), address(this), _salt, keccak256(type(Token).creationCode)
+                            bytes1(0xFF), address(this), salt, keccak256(type(Token).creationCode)
                         )
                     )
                 )
@@ -132,7 +138,6 @@ contract Coins {
     function wrap(Token token, uint256 amount) public {
         uint256 id = uint256(uint160(address(token)));
         require(!_metadata[id].native, OnlyExternal());
-        // ?? check if erc721?
         token.transferFrom(msg.sender, address(this), amount);
         _mint(msg.sender, id, amount);
     }
@@ -224,6 +229,8 @@ contract Token {
     mapping(address owner => uint256) public balanceOf;
     mapping(address owner => mapping(address spender => uint256)) public allowance;
 
+    constructor() payable {}
+
     function name() public view returns (string memory) {
         return Coins(COINS).name(uint160(address(this)));
     }
@@ -248,9 +255,8 @@ contract Token {
     }
 
     function transferFrom(address from, address to, uint256 amount) public returns (bool) {
-        if (allowance[from][msg.sender] != type(uint256).max) {
+        if (allowance[from][msg.sender] != type(uint256).max) 
             allowance[from][msg.sender] -= amount;
-        }
         balanceOf[from] -= amount;
         unchecked {
             balanceOf[to] += amount;
