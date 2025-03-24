@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.29;
 
+error OnlyNative();
+error OnlyExternal();
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
 
+/// @title Coins
+/// @notice Singleton for tokens
+/// @author z0r0z & 0xc0de4c0ffee
 contract Coins {
     event MetadataSet(uint256 indexed);
     event ERC20Created(uint256 indexed);
@@ -15,8 +20,9 @@ contract Coins {
     event Transfer(address, address indexed, address indexed, uint256 indexed, uint256);
 
     mapping(uint256 id => Metadata) internal _metadata;
-    mapping(uint256 id => address owner) public ownerOf;
+
     mapping(uint256 id => uint256) public totalSupply;
+    mapping(uint256 id => address owner) public ownerOf;
 
     mapping(address owner => mapping(uint256 id => uint256)) public balanceOf;
     mapping(address owner => mapping(address operator => bool)) public isOperator;
@@ -28,24 +34,27 @@ contract Coins {
         _;
     }
 
+    constructor() payable {}
+
     // COIN METADATA
 
     struct Metadata {
         string name;
         string symbol;
         string tokenURI;
+        bool native;
     }
 
     function name(uint256 id) public view returns (string memory) {
-        return _metadata[id].name;
+        return _metadata[id].native ? _metadata[id].name : Token(address(uint160(id))).name();
     }
 
     function symbol(uint256 id) public view returns (string memory) {
-        return _metadata[id].symbol;
+        return _metadata[id].native ? _metadata[id].symbol : Token(address(uint160(id))).symbol();
     }
 
-    function decimals(uint256) public pure returns (uint8) {
-        return 18;
+    function decimals(uint256 id) public view returns (uint8) {
+        return _metadata[id].native ? 18 : Token(address(uint160(id))).decimals();
     }
 
     function tokenURI(uint256 id) public view returns (string memory) {
@@ -61,41 +70,40 @@ contract Coins {
         address owner,
         uint256 supply
     ) public {
-        require(bytes(_symbol).length != 0, InvalidMetadata()); // Must have ticker.
-        uint256 id = uint256(keccak256(abi.encodePacked(_name, _symbol, _tokenURI)));
-        require(bytes(_metadata[id].symbol).length == 0, AlreadyCreated()); // New.
-        _metadata[id] = Metadata(_name, _symbol, _tokenURI);
-        _mint(ownerOf[id] = owner, id, supply);
+        require(bytes(_symbol).length != 0, InvalidMetadata()); // Must have coin ticker.
+        uint256 id = uint160(_predictAddress(keccak256(abi.encodePacked(_name, _symbol))));
+        require(!_metadata[id].native, AlreadyCreated()); // Must be unique coin creation.
+        _metadata[id] = Metadata(_name, _symbol, _tokenURI, true); // Name and symbol set.
+        _mint(ownerOf[id] = owner, id, supply); // Mint initial supply to the owner.
     }
 
     // CREATE2 ERC20 TOKENS
 
     function createToken(uint256 id) public {
-        require(bytes(_metadata[id].symbol).length != 0, InvalidMetadata());
-        new Token{salt: bytes32(id)}(id);
+        require(_metadata[id].native, OnlyNative());
+        new Token{salt: keccak256(abi.encodePacked(_metadata[id].name, _metadata[id].symbol))}();
         emit ERC20Created(id);
     }
 
     function tokenize(uint256 id, uint256 amount) public {
+        require(_metadata[id].native, OnlyNative());
         _burn(msg.sender, id, amount);
-        Token(_predictAddress(id)).mint(msg.sender, amount);
+        Token(address(uint160(id))).mint(msg.sender, amount);
     }
 
     function untokenize(uint256 id, uint256 amount) public {
-        Token(_predictAddress(id)).burn(msg.sender, amount);
+        require(_metadata[id].native, OnlyNative());
+        Token(address(uint160(id))).burn(msg.sender, amount);
         _mint(msg.sender, id, amount);
     }
 
-    function _predictAddress(uint256 id) internal view returns (address) {
+    function _predictAddress(bytes32 salt) internal view returns (address) {
         return address(
             uint160(
                 uint256(
                     keccak256(
                         abi.encodePacked(
-                            bytes1(0xFF),
-                            address(this),
-                            bytes32(id),
-                            keccak256(abi.encodePacked(type(Token).creationCode, abi.encode(id)))
+                            bytes1(0xFF), address(this), salt, keccak256(type(Token).creationCode)
                         )
                     )
                 )
@@ -115,13 +123,8 @@ contract Coins {
 
     // COIN ID GOVERNANCE
 
-    function setMetadata(
-        uint256 id,
-        string calldata _name,
-        string calldata _symbol,
-        string calldata _tokenURI
-    ) public onlyOwnerOf(id) {
-        _metadata[id] = Metadata(_name, _symbol, _tokenURI);
+    function setMetadata(uint256 id, string calldata _tokenURI) public onlyOwnerOf(id) {
+        _metadata[id].tokenURI = _tokenURI;
         emit MetadataSet(id);
     }
 
@@ -134,15 +137,15 @@ contract Coins {
 
     function wrap(Token token, uint256 amount) public {
         uint256 id = uint256(uint160(address(token)));
-        if (bytes(_metadata[id].symbol).length == 0) {
-            _metadata[id] = Metadata(token.name(), token.symbol(), "");
-        }
+        require(!_metadata[id].native, OnlyExternal());
         token.transferFrom(msg.sender, address(this), amount);
         _mint(msg.sender, id, amount);
     }
 
     function unwrap(Token token, uint256 amount) public {
-        _burn(msg.sender, uint256(uint160(address(token))), amount);
+        uint256 id = uint256(uint160(address(token)));
+        require(!_metadata[id].native, OnlyExternal());
+        _burn(msg.sender, id, amount);
         token.transfer(msg.sender, amount);
     }
 
@@ -163,7 +166,9 @@ contract Coins {
     {
         if (msg.sender != from && !isOperator[from][msg.sender]) {
             uint256 allowed = allowance[from][msg.sender][id];
-            if (allowed != type(uint256).max) allowance[from][msg.sender][id] = allowed - amount;
+            if (allowed != type(uint256).max) {
+                allowance[from][msg.sender][id] = allowed - amount;
+            }
         }
         balanceOf[from][id] -= amount;
         unchecked {
@@ -215,9 +220,7 @@ contract Token {
     event Approval(address indexed, address indexed, uint256);
     event Transfer(address indexed, address indexed, uint256);
 
-    string public name;
-    string public symbol;
-    uint256 public constant decimals = 18;
+    uint8 public constant decimals = 18;
 
     uint256 public totalSupply;
 
@@ -226,8 +229,14 @@ contract Token {
     mapping(address owner => uint256) public balanceOf;
     mapping(address owner => mapping(address spender => uint256)) public allowance;
 
-    constructor(uint256 id) payable {
-        (name, symbol) = (Coins(msg.sender).name(id), Coins(msg.sender).symbol(id));
+    constructor() payable {}
+
+    function name() public view returns (string memory) {
+        return Coins(COINS).name(uint160(address(this)));
+    }
+
+    function symbol() public view returns (string memory) {
+        return Coins(COINS).symbol(uint160(address(this)));
     }
 
     function approve(address spender, uint256 amount) public returns (bool) {
@@ -246,7 +255,8 @@ contract Token {
     }
 
     function transferFrom(address from, address to, uint256 amount) public returns (bool) {
-        if (allowance[from][msg.sender] != type(uint256).max) allowance[from][msg.sender] -= amount;
+        if (allowance[from][msg.sender] != type(uint256).max) 
+            allowance[from][msg.sender] -= amount;
         balanceOf[from] -= amount;
         unchecked {
             balanceOf[to] += amount;
