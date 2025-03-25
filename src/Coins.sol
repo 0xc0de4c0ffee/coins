@@ -42,19 +42,18 @@ contract Coins {
         string name;
         string symbol;
         string tokenURI;
-        bool native;
     }
 
     function name(uint256 id) public view returns (string memory) {
-        return _metadata[id].native ? _metadata[id].name : Token(address(uint160(id))).name();
+        return bytes(_metadata[id].tokenURI).length != 0 ? _metadata[id].name : Token(address(uint160(id))).name();
     }
 
     function symbol(uint256 id) public view returns (string memory) {
-        return _metadata[id].native ? _metadata[id].symbol : Token(address(uint160(id))).symbol();
+        return bytes(_metadata[id].tokenURI).length != 0 ? _metadata[id].symbol : Token(address(uint160(id))).symbol();
     }
 
     function decimals(uint256 id) public view returns (uint8) {
-        return _metadata[id].native ? 18 : Token(address(uint160(id))).decimals();
+        return bytes(_metadata[id].tokenURI).length != 0 ? 18 : Token(address(uint160(id))).decimals();
     }
 
     function tokenURI(uint256 id) public view returns (string memory) {
@@ -70,18 +69,18 @@ contract Coins {
         address owner,
         uint256 supply
     ) public {
-        require(bytes(_symbol).length != 0, InvalidMetadata()); // Must have a coin ticker.
+        require(bytes(_symbol).length != 0, InvalidMetadata()); 
         uint256 id = uint160(_predictAddress(keccak256(abi.encodePacked(_name, _symbol))));
-        require(!_metadata[id].native, AlreadyCreated()); // Must be unique coin creation.
-        _metadata[id] = Metadata(_name, _symbol, _tokenURI, true); // Name and symbol set.
-        _mint(ownerOf[id] = owner, id, supply); // Mint initial supply to the coin owner.
+        require(bytes(_metadata[id].symbol).length == 0, AlreadyCreated()); 
+        _metadata[id] = Metadata(_name, _symbol, _tokenURI); 
+        _mint(ownerOf[id] = owner, id, supply);
     }
 
     // CREATE2 ERC20 TOKENS
 
     function createToken(uint256 id) public {
         Metadata storage meta = _metadata[id];
-        require(meta.native, OnlyNative());
+        require(bytes(meta.tokenURI).length != 0, OnlyNative());
         new Token{salt: keccak256(abi.encodePacked(meta.name, meta.symbol))}();
         emit ERC20Created(id);
     }
