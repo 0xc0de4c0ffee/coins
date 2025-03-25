@@ -77,11 +77,11 @@ contract CoinsTest is Test {
         coins.create(NAME, SYMBOL, TOKEN_URI, alice, INITIAL_SUPPLY);
     }
 
-    function test_RevertWhen_CreatingWithEmptySymbol() public {
+    function test_RevertWhen_CreatingWithEmptyURI() public {
         vm.prank(alice);
-        // Should revert when symbol is empty
+        // Should revert when URI is empty
         vm.expectRevert(InvalidMetadata.selector);
-        coins.create(NAME, "", TOKEN_URI, alice, INITIAL_SUPPLY);
+        coins.create(NAME, SYMBOL, "", alice, INITIAL_SUPPLY);
     }
 
     // COIN METADATA TESTS

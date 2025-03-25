@@ -2,7 +2,6 @@
 pragma solidity 0.8.29;
 
 error OnlyNative();
-error OnlyExternal();
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
@@ -45,15 +44,18 @@ contract Coins {
     }
 
     function name(uint256 id) public view returns (string memory) {
-        return bytes(_metadata[id].tokenURI).length != 0 ? _metadata[id].name : Token(address(uint160(id))).name();
+        Metadata storage meta = _metadata[id];
+        return bytes(meta.tokenURI).length != 0 ? meta.name : Token(address(uint160(id))).name();
     }
 
     function symbol(uint256 id) public view returns (string memory) {
-        return bytes(_metadata[id].tokenURI).length != 0 ? _metadata[id].symbol : Token(address(uint160(id))).symbol();
+        Metadata storage meta = _metadata[id];
+        return bytes(meta.tokenURI).length != 0 ? meta.symbol : Token(address(uint160(id))).symbol();
     }
 
     function decimals(uint256 id) public view returns (uint8) {
-        return bytes(_metadata[id].tokenURI).length != 0 ? 18 : Token(address(uint160(id))).decimals();
+        return
+            bytes(_metadata[id].tokenURI).length != 0 ? 18 : Token(address(uint160(id))).decimals();
     }
 
     function tokenURI(uint256 id) public view returns (string memory) {
@@ -69,10 +71,10 @@ contract Coins {
         address owner,
         uint256 supply
     ) public {
-        require(bytes(_symbol).length != 0, InvalidMetadata()); 
+        require(bytes(_tokenURI).length != 0, InvalidMetadata());
         uint256 id = uint160(_predictAddress(keccak256(abi.encodePacked(_name, _symbol))));
-        require(bytes(_metadata[id].symbol).length == 0, AlreadyCreated()); 
-        _metadata[id] = Metadata(_name, _symbol, _tokenURI); 
+        require(bytes(_metadata[id].tokenURI).length == 0, AlreadyCreated());
+        _metadata[id] = Metadata(_name, _symbol, _tokenURI);
         _mint(ownerOf[id] = owner, id, supply);
     }
 
