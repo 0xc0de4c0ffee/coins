@@ -72,7 +72,22 @@ contract Coins {
         uint256 supply
     ) public {
         require(bytes(_tokenURI).length != 0, InvalidMetadata());
-        uint256 id = uint160(_predictAddress(keccak256(abi.encodePacked(_name, _symbol))));
+        uint256 id = uint160(
+            address(
+                uint160(
+                    uint256(
+                        keccak256(
+                            abi.encodePacked(
+                                bytes1(0xFF),
+                                this,
+                                keccak256(abi.encodePacked(_name, _symbol)),
+                                keccak256(type(Token).creationCode)
+                            )
+                        )
+                    )
+                )
+            )
+        );
         require(bytes(_metadata[id].tokenURI).length == 0, AlreadyCreated());
         _metadata[id] = Metadata(_name, _symbol, _tokenURI);
         _mint(ownerOf[id] = owner, id, supply);
@@ -95,20 +110,6 @@ contract Coins {
     function untokenize(uint256 id, uint256 amount) public {
         Token(address(uint160(id))).burn(msg.sender, amount);
         _mint(msg.sender, id, amount);
-    }
-
-    function _predictAddress(bytes32 id) internal view returns (address) {
-        return address(
-            uint160(
-                uint256(
-                    keccak256(
-                        abi.encodePacked(
-                            bytes1(0xFF), this, id, keccak256(type(Token).creationCode)
-                        )
-                    )
-                )
-            )
-        );
     }
 
     // COIN ID MINT/BURN

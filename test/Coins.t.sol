@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.29;
 
+import "forge-std/console.sol";
+
 import {Test} from "forge-std/Test.sol";
 import {Coins, Token} from "../src/Coins.sol";
-import "forge-std/console.sol";
-import {MockERC20} from "./mock/MockERC20.sol";
+import {MockERC20} from "@solady/test/utils/mocks/MockERC20.sol";
 
+error OnlyNative();
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
-error OnlyExternal();
-error OnlyNative();
 
 contract CoinsTest is Test {
     Coins public coins;
