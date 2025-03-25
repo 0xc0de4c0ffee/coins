@@ -6,7 +6,7 @@
 
 Hyper-minimal fungible token singleton built on ERC6909 with two-way compatibility with ERC20.  
 
-![Coins Architecture Diagram](coins-architecture.svg)
+![Coins Architecture Diagram](./assets/coins-architecture.svg)
 
 ## Overview
 
