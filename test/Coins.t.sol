@@ -632,4 +632,25 @@ contract CoinsTest is Test {
 
         vm.stopPrank();
     }
+
+    // LOOP TESTS
+
+    function test_loop20() public {
+        console.log("coinId", address(uint160(coinId)));
+        Token token = Token(address(uint160(coinId)));
+        vm.startPrank(deployer);
+        coins.createToken(coinId);
+        // Native token should be tokenizable
+        coins.tokenize(coinId, 1e18);
+        token.approve(address(coins), 1e18);
+        vm.stopPrank();
+        console.log("balance", token.balanceOf(deployer));
+        console.log("allowance", token.allowance(deployer, address(coins)));
+        // Native token should not be wrappable
+        console.log("Coin's Balance", token.balanceOf(address(coins)));
+        vm.prank(deployer);
+        vm.expectRevert(InvalidMetadata.selector);
+        coins.wrap(token, 1e18);
+        console.log("Coin's Balance", token.balanceOf(address(coins)));
+    }
 }
