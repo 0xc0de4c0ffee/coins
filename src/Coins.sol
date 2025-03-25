@@ -53,8 +53,9 @@ contract Coins {
     }
 
     function decimals(uint256 id) public view returns (uint8) {
-        return
-            bytes(_metadata[id].tokenURI).length != 0 ? 18 : Token(address(uint160(id))).decimals();
+        return bytes(_metadata[id].tokenURI).length != 0
+            ? 18
+            : uint8(Token(address(uint160(id))).decimals());
     }
 
     function tokenURI(uint256 id) public view returns (string memory) {
@@ -220,11 +221,11 @@ contract Token {
     event Approval(address indexed, address indexed, uint256);
     event Transfer(address indexed, address indexed, uint256);
 
-    uint8 public constant decimals = 18;
-
     uint256 public totalSupply;
 
-    address internal immutable COINS = msg.sender;
+    uint256 public constant decimals = 18;
+
+    address internal immutable coins = msg.sender;
 
     mapping(address owner => uint256) public balanceOf;
     mapping(address owner => mapping(address spender => uint256)) public allowance;
@@ -232,11 +233,11 @@ contract Token {
     constructor() payable {}
 
     function name() public view returns (string memory) {
-        return Coins(COINS).name(uint160(address(this)));
+        return Coins(coins).name(uint160(address(this)));
     }
 
     function symbol() public view returns (string memory) {
-        return Coins(COINS).symbol(uint160(address(this)));
+        return Coins(coins).symbol(uint160(address(this)));
     }
 
     function approve(address spender, uint256 amount) public returns (bool) {
@@ -265,7 +266,7 @@ contract Token {
     }
 
     function mint(address to, uint256 amount) public payable {
-        require(msg.sender == COINS, Unauthorized());
+        require(msg.sender == coins, Unauthorized());
         unchecked {
             totalSupply += amount;
             balanceOf[to] += amount;
@@ -274,7 +275,7 @@ contract Token {
     }
 
     function burn(address from, uint256 amount) public payable {
-        require(msg.sender == COINS, Unauthorized());
+        require(msg.sender == coins, Unauthorized());
         balanceOf[from] -= amount;
         unchecked {
             totalSupply -= amount;
