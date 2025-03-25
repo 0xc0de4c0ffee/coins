@@ -174,6 +174,61 @@ The `Token` contract is automatically created when using `createToken()` and pro
 - `approve()`, `transfer()`, `transferFrom()`: Standard ERC20 functions
 - `mint()` and `burn()`: Restricted to the Coins contract
 
+## Token ID Mechanism
+
+The Coins contract uses a deterministic approach to generate and map token IDs, which is central to how it manages both newly created tokens and existing ERC20 tokens.
+
+### For Newly Created Coins Tokens
+
+When you create a new token using the `create()` function, the token ID is generated deterministically using the following formula:
+
+```solidity
+uint256 id = uint160(
+    uint256(
+        keccak256(
+            abi.encodePacked(
+                bytes1(0xFF),
+                address(coins),
+                keccak256(abi.encodePacked(name, symbol)),
+                keccak256(type(Token).creationCode)
+            )
+        )
+    )
+);
+```
+
+This approach:
+1. Uses the token's name and symbol as unique identifiers
+2. Incorporates the Coins contract address to prevent collisions across different deployments
+3. Includes the Token contract's creation code to tie the ID to the implementation
+4. Follows the CREATE2 address derivation pattern, making the ID deterministic and predictable
+
+When you later call `createToken()`, this same formula ensures the ERC20 token contract is deployed at the address matching the token ID. This means:
+
+```
+Token Contract Address = address(uint160(tokenId))
+```
+
+Therefore, for any token created in the Coins system, its ID is identical to the address of its corresponding ERC20 contract.
+
+### For Existing ERC20 Tokens
+
+When wrapping an existing ERC20 token, the token ID is simply the address of the ERC20 token contract:
+
+```
+Wrapped Token ID = uint256(uint160(address(existingToken)))
+```
+
+This direct mapping ensures:
+1. Each ERC20 token has a unique ID within the Coins system
+2. The system can easily find the original token when unwrapping
+3. No collision is possible between wrapped tokens and native Coins tokens
+
+This dual-mapping approach creates a unified system where:
+- Native Coins tokens can be converted to ERC20 tokens using the tokenize/untokenize functions
+- External ERC20 tokens can be wrapped and used within the Coins ecosystem
+- All token IDs, whether for native or wrapped tokens, correspond to valid Ethereum addresses
+
 ## Usage Examples
 
 Here are some examples of how to interact with the Coins contract:
