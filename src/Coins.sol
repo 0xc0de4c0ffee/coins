@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.29;
 
-error OnlyNative();
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
@@ -73,31 +72,33 @@ contract Coins {
     ) public {
         require(bytes(_tokenURI).length != 0, InvalidMetadata());
         uint256 id = uint160(
-            address(
-                uint160(
-                    uint256(
-                        keccak256(
-                            abi.encodePacked(
-                                bytes1(0xFF),
-                                this,
-                                keccak256(abi.encodePacked(_name, _symbol)),
-                                keccak256(type(Token).creationCode)
-                            )
-                        )
+            uint256(
+                keccak256(
+                    abi.encodePacked(
+                        bytes1(0xFF),
+                        this,
+                        keccak256(abi.encodePacked(_name, _symbol)),
+                        keccak256(type(Token).creationCode)
                     )
                 )
             )
         );
         require(bytes(_metadata[id].tokenURI).length == 0, AlreadyCreated());
         _metadata[id] = Metadata(_name, _symbol, _tokenURI);
-        _mint(ownerOf[id] = owner, id, supply);
+        emit Transfer(
+            msg.sender,
+            address(0),
+            ownerOf[id] = owner,
+            id,
+            balanceOf[owner][id] = totalSupply[id] = supply
+        );
     }
 
     // CREATE2 ERC20 TOKENS
 
     function createToken(uint256 id) public {
         Metadata storage meta = _metadata[id];
-        require(bytes(meta.tokenURI).length != 0, OnlyNative());
+        require(bytes(meta.tokenURI).length != 0, InvalidMetadata());
         new Token{salt: keccak256(abi.encodePacked(meta.name, meta.symbol))}();
         emit ERC20Created(id);
     }
@@ -125,6 +126,7 @@ contract Coins {
     // COIN ID GOVERNANCE
 
     function setMetadata(uint256 id, string calldata _tokenURI) public onlyOwnerOf(id) {
+        require(bytes(_tokenURI).length != 0, InvalidMetadata());
         _metadata[id].tokenURI = _tokenURI;
         emit MetadataSet(id);
     }

@@ -7,7 +7,6 @@ import {Test} from "forge-std/Test.sol";
 import {Coins, Token} from "../src/Coins.sol";
 import {MockERC20} from "@solady/test/utils/mocks/MockERC20.sol";
 
-error OnlyNative();
 error Unauthorized();
 error AlreadyCreated();
 error InvalidMetadata();
@@ -282,7 +281,7 @@ contract CoinsTest is Test {
         coins.unwrap(Token(address(mockToken)), 1000 * 1e18);
         vm.stopPrank();
         // External token should Not be deployed
-        vm.expectRevert(OnlyNative.selector);
+        vm.expectRevert(InvalidMetadata.selector);
         coins.createToken(uint160(address(mockToken)));
 
         // External token should Not be tokenizable
