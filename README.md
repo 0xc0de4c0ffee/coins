@@ -6,7 +6,7 @@
 
 Hyper-minimal fungible token singleton built on ERC6909 with two-way compatibility with ERC20.  
 
-![diagram](diagram.png)  
+![Coins Architecture Diagram](coins-architecture.svg)
 
 ## Overview
 
@@ -22,6 +22,39 @@ Coins is a singleton smart contract for creating and managing fungible tokens us
 - **Ownership & Permissions**: Flexible permission system with ownership and operators
 
 ## Core Functionality
+
+The diagram below provides an overview of the key functional areas of the Coins contract:
+
+```mermaid
+flowchart TB
+    subgraph "Token Creation"
+        A[User] -->|create\nname, symbol, URI, owner, supply| B(New Token ID)
+        B -->|mint| C[Token Balance]
+    end
+    
+    subgraph "ERC20 Compatibility"
+        C -->|createToken| D(Deploy ERC20 Contract)
+        C -->|tokenize| E[ERC20 Token]
+        E -->|untokenize| C
+    end
+    
+    subgraph "Token Wrapping"
+        F[External ERC20] -->|wrap| G[Wrapped Token ID]
+        G -->|unwrap| F
+    end
+    
+    subgraph "Token Management"
+        C -->|transfer| H[Other User]
+        C -->|approve| I[Approved Spender]
+        I -->|transferFrom| H
+        C -->|burn| J((Burned))
+    end
+    
+    subgraph "Governance"
+        K[Token Owner] -->|setMetadata| B
+        K -->|transferOwnership| L[New Owner]
+    end
+```
 
 ### Token Creation
 
@@ -51,6 +84,49 @@ function untokenize(uint256 id, uint256 amount) public
 ```
 
 Convert between native Coins tokens and ERC20 tokens.
+
+#### Token Conversion Flow
+
+The following diagram illustrates how tokens can be converted between ERC6909 and ERC20 formats:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Coins as Coins Contract
+    participant Token as ERC20 Token
+    
+    Note over User,Token: ERC20 Compatibility Flow
+    
+    User->>Coins: create(name, symbol, URI, owner, supply)
+    Note right of Coins: Token ID created
+    
+    User->>Coins: createToken(id)
+    Coins->>Token: deploy
+    Note right of Token: ERC20 token deployed
+    
+    User->>Coins: tokenize(id, amount)
+    Coins->>Coins: burn tokens from user
+    Coins->>Token: mint tokens to user
+    Note right of Token: User now has ERC20 tokens
+    
+    User->>Coins: untokenize(id, amount)
+    Coins->>Token: burn tokens from user
+    Coins->>Coins: mint tokens to user
+    Note right of Coins: User now has ERC6909 tokens
+    
+    Note over User,Token: Token Wrapping Flow
+    
+    User->>Token: approve(Coins, amount)
+    User->>Coins: wrap(token, amount)
+    Coins->>Token: transferFrom(user, Coins, amount)
+    Coins->>Coins: mint tokens to user
+    Note right of Coins: User now has wrapped tokens
+    
+    User->>Coins: unwrap(token, amount)
+    Coins->>Coins: burn tokens from user
+    Coins->>Token: transfer tokens to user
+    Note right of Token: User now has original ERC20 tokens
+```
 
 ### Token Wrapping
 
@@ -97,6 +173,27 @@ The `Token` contract is automatically created when using `createToken()` and pro
 - `name()` and `symbol()`: Inherited from Coins metadata
 - `approve()`, `transfer()`, `transferFrom()`: Standard ERC20 functions
 - `mint()` and `burn()`: Restricted to the Coins contract
+
+## Usage Examples
+
+Here are some examples of how to interact with the Coins contract:
+
+```solidity
+// EXAMPLE 1: Creating a new token
+// Deploy the Coins contract
+Coins coins = new Coins();
+
+// Create a new token with initial supply
+coins.create(
+    "My Token",           // name
+    "MTK",                // symbol
+    "ipfs://metadata",    // tokenURI
+    msg.sender,           // owner
+    1000000 * 10**18      // initial supply (with 18 decimals)
+);
+```
+
+See the [full usage examples](./examples/CoinsExamples.sol) for more detailed code samples covering all major functions.
 
 ## Getting Started  
 
