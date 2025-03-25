@@ -58,6 +58,10 @@ contract CoinsTest is Test {
 
     // COIN CREATION TESTS
 
+    function test_newCoinGas() public {
+        coins.create("YES", "YES", "YES", deployer, INITIAL_SUPPLY);
+    }
+
     function test_CoinCreation() public view {
         // Verify owner
         assertEq(coins.ownerOf(coinId), deployer);
