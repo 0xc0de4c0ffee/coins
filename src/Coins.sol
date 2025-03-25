@@ -224,7 +224,6 @@ contract Token {
     uint256 public totalSupply;
 
     uint256 public constant decimals = 18;
-
     address internal immutable coins = msg.sender;
 
     mapping(address owner => uint256) public balanceOf;
