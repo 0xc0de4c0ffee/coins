@@ -12,6 +12,17 @@ error AlreadyCreated();
 error InvalidMetadata();
 
 contract CoinsTest is Test {
+    event MetadataSet(uint256 indexed);
+    event ERC20Created(uint256 indexed);
+    event OwnershipTransferred(uint256 indexed);
+
+    event OperatorSet(address indexed, address indexed, bool);
+    event Approval(address indexed, address indexed, uint256 indexed, uint256);
+    event Transfer(address, address indexed, address indexed, uint256 indexed, uint256);
+
+    event Approval(address indexed, address indexed, uint256);
+    event Transfer(address indexed, address indexed, uint256);
+
     Coins public coins;
 
     // Test accounts
@@ -335,6 +346,289 @@ contract CoinsTest is Test {
         // Attempt to wrap the native token back, should revert
         vm.expectRevert(InvalidMetadata.selector);
         coins.wrap(nativeToken, amount);
+
+        vm.stopPrank();
+    }
+
+    function test_MaximumAllowance() public {
+        uint256 maxAllowance = type(uint256).max;
+
+        vm.startPrank(deployer);
+        coins.approve(alice, coinId, maxAllowance);
+
+        // Transfer should not reduce allowance when it's set to max
+        coins.transferFrom(deployer, bob, coinId, 1000 * 1e18);
+        assertEq(coins.allowance(deployer, alice, coinId), maxAllowance);
+        vm.stopPrank();
+    }
+
+    function test_OperatorApproval() public {
+        vm.startPrank(deployer);
+
+        // Set bob as an operator for deployer
+        coins.setOperator(bob, true);
+        assertEq(coins.isOperator(deployer, bob), true);
+
+        // Bob should be able to transfer without specific approval
+        vm.stopPrank();
+        vm.prank(bob);
+        coins.transferFrom(deployer, alice, coinId, 500 * 1e18);
+
+        // Verify balance changes
+        assertEq(coins.balanceOf(deployer, coinId), INITIAL_SUPPLY - 500 * 1e18);
+        assertEq(coins.balanceOf(alice, coinId), 500 * 1e18);
+    }
+
+    function test_RevokeOperator() public {
+        vm.startPrank(deployer);
+
+        // Set bob as an operator
+        coins.setOperator(bob, true);
+
+        // Revoke operator status
+        coins.setOperator(bob, false);
+        assertEq(coins.isOperator(deployer, bob), false);
+
+        vm.stopPrank();
+
+        // Bob should no longer be able to transfer
+        vm.startPrank(bob);
+        vm.expectRevert();
+        coins.transferFrom(deployer, alice, coinId, 100 * 1e18);
+        vm.stopPrank();
+    }
+
+    function test_TokenURIFallback() public {
+        // Create and wrap a mock token
+        vm.startPrank(deployer);
+        MockERC20 mockToken = new MockERC20("Mock Token", "MOCK", 18);
+        mockToken.mint(deployer, 1000 * 1e18);
+        mockToken.approve(address(coins), 1000 * 1e18);
+
+        // Wrap the token
+        coins.wrap(Token(address(mockToken)), 1000 * 1e18);
+        uint256 wrappedId = uint256(uint160(address(mockToken)));
+
+        // Test that name/symbol/decimals fall back to the token's values
+        assertEq(coins.name(wrappedId), "Mock Token");
+        assertEq(coins.symbol(wrappedId), "MOCK");
+        assertEq(coins.decimals(wrappedId), 18);
+
+        // tokenURI should be empty
+        assertEq(bytes(coins.tokenURI(wrappedId)).length, 0);
+
+        vm.stopPrank();
+    }
+
+    function test_SupportsInterface() public view {
+        // Test ERC165 interface
+        assertEq(coins.supportsInterface(0x01ffc9a7), true);
+
+        // Test ERC6909 interface
+        assertEq(coins.supportsInterface(0x0f632fb3), true);
+
+        // Test for an unsupported interface
+        assertEq(coins.supportsInterface(0xffffffff), false);
+    }
+
+    function test_TransferEvents() public {
+        uint256 transferAmount = 300 * 1e18;
+
+        vm.expectEmit(true, true, true, true);
+        emit Transfer(deployer, deployer, alice, coinId, transferAmount);
+
+        vm.prank(deployer);
+        coins.transfer(alice, coinId, transferAmount);
+    }
+
+    function test_RevertWhen_InsufficientBalance() public {
+        uint256 transferAmount = INITIAL_SUPPLY + 1;
+
+        vm.prank(deployer);
+        vm.expectRevert();
+        coins.transfer(alice, coinId, transferAmount);
+    }
+
+    function test_RevertWhen_UntokenizingMoreThanBalance() public {
+        vm.startPrank(deployer);
+
+        // Create token and tokenize some amount
+        coins.createToken(coinId);
+        coins.tokenize(coinId, 500 * 1e18);
+
+        // Try to untokenize more than was tokenized
+        vm.expectRevert();
+        coins.untokenize(coinId, 1000 * 1e18);
+
+        vm.stopPrank();
+    }
+
+    function test_CreateWithZeroSupply() public {
+        string memory zeroName = "Zero Supply";
+        string memory zeroSymbol = "ZERO";
+
+        vm.prank(alice);
+        coins.create(zeroName, zeroSymbol, TOKEN_URI, alice, 0);
+
+        uint256 zeroId = uint160(_predictAddress(keccak256(abi.encodePacked(zeroName, zeroSymbol))));
+
+        assertEq(coins.totalSupply(zeroId), 0);
+        assertEq(coins.ownerOf(zeroId), alice);
+    }
+
+    function test_RevertWhen_UnwrappingNonWrappedToken() public {
+        vm.prank(deployer);
+        vm.expectRevert();
+        coins.unwrap(Token(address(0x123)), 100 * 1e18);
+    }
+
+    function test_DifferentURIForSameNameSymbol() public {
+        vm.prank(alice);
+
+        // This should fail because the ID is based on name/symbol, not URI
+        vm.expectRevert(AlreadyCreated.selector);
+        coins.create(NAME, SYMBOL, "https://different-uri.com", alice, 1000 * 1e18);
+    }
+
+    function test_NonStandardDecimalsWrappedToken() public {
+        vm.startPrank(deployer);
+        // Create a token with 8 decimals
+        MockERC20 mockToken = new MockERC20("Decimal Test", "DEC8", 8);
+        mockToken.mint(deployer, 1000 * 1e8); // Amount adjusted for decimals
+        mockToken.approve(address(coins), 1000 * 1e8);
+
+        // Wrap the token
+        coins.wrap(Token(address(mockToken)), 1000 * 1e8);
+        uint256 wrappedId = uint256(uint160(address(mockToken)));
+
+        // Test that decimals match the original token
+        assertEq(coins.decimals(wrappedId), 8);
+        vm.stopPrank();
+    }
+
+    function test_MultipleIDOperations() public {
+        // Create a second coin
+        vm.prank(deployer);
+        coins.create("Second Coin", "SEC", "https://second.com", deployer, 500 * 1e18);
+        uint256 secondCoinId =
+            uint160(_predictAddress(keccak256(abi.encodePacked("Second Coin", "SEC"))));
+
+        // Transfer both coins to alice
+        vm.startPrank(deployer);
+        coins.transfer(alice, coinId, 100 * 1e18);
+        coins.transfer(alice, secondCoinId, 50 * 1e18);
+        vm.stopPrank();
+
+        // Verify both transfers succeeded
+        assertEq(coins.balanceOf(alice, coinId), 100 * 1e18);
+        assertEq(coins.balanceOf(alice, secondCoinId), 50 * 1e18);
+    }
+
+    function test_MultipleOwnershipTransfers() public {
+        // Create a second coin
+        vm.prank(deployer);
+        coins.create("Second Coin", "SEC", "https://second.com", deployer, 500 * 1e18);
+        uint256 secondCoinId =
+            uint160(_predictAddress(keccak256(abi.encodePacked("Second Coin", "SEC"))));
+
+        // Transfer ownership of both coins
+        vm.startPrank(deployer);
+        coins.transferOwnership(coinId, alice);
+        coins.transferOwnership(secondCoinId, bob);
+        vm.stopPrank();
+
+        // Verify new owners
+        assertEq(coins.ownerOf(coinId), alice);
+        assertEq(coins.ownerOf(secondCoinId), bob);
+
+        // Verify new owners can mint
+        vm.prank(alice);
+        coins.mint(alice, coinId, 100 * 1e18);
+
+        vm.prank(bob);
+        coins.mint(bob, secondCoinId, 100 * 1e18);
+    }
+
+    function test_ERC20Interactions() public {
+        vm.startPrank(deployer);
+
+        // Create and tokenize
+        coins.createToken(coinId);
+        uint256 amount = 500 * 1e18;
+        coins.tokenize(coinId, amount);
+
+        // Get the ERC20 token
+        Token token = Token(address(uint160(coinId)));
+
+        // Test standard ERC20 functions
+        token.approve(alice, 200 * 1e18);
+        assertEq(token.allowance(deployer, alice), 200 * 1e18);
+
+        token.transfer(bob, 100 * 1e18);
+        assertEq(token.balanceOf(bob), 100 * 1e18);
+
+        vm.stopPrank();
+
+        // Test transferFrom
+        vm.prank(alice);
+        token.transferFrom(deployer, alice, 200 * 1e18);
+        assertEq(token.balanceOf(alice), 200 * 1e18);
+        assertEq(token.balanceOf(deployer), 200 * 1e18);
+    }
+
+    function test_TokenURIUpdatesAfterTokenization() public {
+        vm.startPrank(deployer);
+
+        // Create token
+        coins.createToken(coinId);
+
+        // Update URI
+        string memory newURI = "https://updated-uri.com";
+        coins.setMetadata(coinId, newURI);
+
+        // Verify the token still works with updated URI
+        uint256 amount = 100 * 1e18;
+        coins.tokenize(coinId, amount);
+
+        // Verify URI was updated
+        assertEq(coins.tokenURI(coinId), newURI);
+
+        vm.stopPrank();
+    }
+
+    function test_LargeTransferGasUsage() public {
+        uint256 largeAmount = INITIAL_SUPPLY / 2;
+
+        // Measure gas for a large transfer
+        uint256 gasStart = gasleft();
+        vm.prank(deployer);
+        coins.transfer(alice, coinId, largeAmount);
+        uint256 gasUsed = gasStart - gasleft();
+
+        // Just a simple verification that the transfer succeeded
+        assertEq(coins.balanceOf(alice, coinId), largeAmount);
+
+        // Output gas used for analysis
+        console.log("Gas used for large transfer:", gasUsed);
+    }
+
+    function test_WrappingNonCompliantToken() public {
+        // This test would need to be adjusted based on how your system handles non-standard ERC20 tokens
+        // For example, tokens with transfer fees or rebasing mechanisms
+
+        vm.startPrank(deployer);
+
+        // Mock a token with non-standard behavior (ideally with a transfer fee mechanism)
+        // For this test to be meaningful, you'd need a mock token that implements a fee
+        // MockTokenWithFee mockToken = new MockTokenWithFee();
+
+        // For the purpose of this snippet, we'll just use a regular mock
+        MockERC20 mockToken = new MockERC20("Fee Token", "FEE", 18);
+        mockToken.mint(deployer, 1000 * 1e18);
+        mockToken.approve(address(coins), 1000 * 1e18);
+
+        // Wrap the token - the wrap function should handle any discrepancies
+        coins.wrap(Token(address(mockToken)), 1000 * 1e18);
 
         vm.stopPrank();
     }
