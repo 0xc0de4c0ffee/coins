@@ -114,6 +114,20 @@ contract Coins {
         _mint(msg.sender, id, amount);
     }
 
+    // COIN ID WRAPPING
+
+    function wrap(Token token, uint256 amount) public {
+        uint256 id = uint160(address(token));
+        require(bytes(_metadata[id].tokenURI).length == 0, InvalidMetadata());
+        token.transferFrom(msg.sender, address(this), amount);
+        _mint(msg.sender, id, amount);
+    }
+
+    function unwrap(Token token, uint256 amount) public {
+        _burn(msg.sender, uint256(uint160(address(token))), amount);
+        token.transfer(msg.sender, amount);
+    }
+
     // COIN ID MINT/BURN
 
     function mint(address to, uint256 id, uint256 amount) public onlyOwnerOf(id) {
@@ -135,18 +149,6 @@ contract Coins {
     function transferOwnership(uint256 id, address newOwner) public onlyOwnerOf(id) {
         ownerOf[id] = newOwner;
         emit OwnershipTransferred(id);
-    }
-
-    // COIN ID WRAPPING
-
-    function wrap(Token token, uint256 amount) public {
-        token.transferFrom(msg.sender, address(this), amount);
-        _mint(msg.sender, uint256(uint160(address(token))), amount);
-    }
-
-    function unwrap(Token token, uint256 amount) public {
-        _burn(msg.sender, uint256(uint160(address(token))), amount);
-        token.transfer(msg.sender, amount);
     }
 
     // ERC6909

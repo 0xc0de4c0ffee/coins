@@ -292,4 +292,50 @@ contract CoinsTest is Test {
         vm.expectRevert();
         coins.untokenize(uint160(address(mockToken)), 1000 * 1e18);
     }
+
+    function test_RevertWhen_WrappingNativeToken() public {
+        // First create the token from the existing coin
+        vm.startPrank(deployer);
+
+        // Calculate and verify the expected address
+        address expectedTokenAddress = address(uint160(coinId));
+        bytes32 salt = keccak256(abi.encodePacked(NAME, SYMBOL));
+        address predictedAddress = _predictAddress(salt);
+
+        assertEq(
+            predictedAddress, expectedTokenAddress, "Predicted token address does not match coinId"
+        );
+
+        // Deploy the token and verify its address
+        coins.createToken(coinId);
+        assertEq(
+            address(uint160(coinId)).code.length > 0,
+            true,
+            "Token contract not deployed at expected address"
+        );
+
+        // Tokenize some coins to create ERC20 tokens
+        uint256 amount = 100 * 1e18;
+        coins.tokenize(coinId, amount);
+
+        // Verify token balances
+        Token nativeToken = Token(address(uint160(coinId)));
+        assertEq(
+            nativeToken.balanceOf(deployer), amount, "Token balance incorrect after tokenization"
+        );
+        assertEq(
+            coins.balanceOf(deployer, coinId),
+            INITIAL_SUPPLY - amount,
+            "Coin balance incorrect after tokenization"
+        );
+
+        // Approve the contract to take the tokens
+        nativeToken.approve(address(coins), amount);
+
+        // Attempt to wrap the native token back, should revert
+        vm.expectRevert(InvalidMetadata.selector);
+        coins.wrap(nativeToken, amount);
+
+        vm.stopPrank();
+    }
 }
