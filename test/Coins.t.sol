@@ -64,7 +64,7 @@ contract CoinsTest is Test {
 
     function _predictImplementationAddress() internal view returns (address) {
         // Predict the implementation token address based on how it's deployed in your contract
-        bytes32 salt = bytes32(bytes20(address(coins))); // Using the Coins contract address as salt
+        bytes32 salt = keccak256("");
         bytes32 initCodeHash = keccak256(type(Token).creationCode);
 
         return address(
@@ -85,7 +85,7 @@ contract CoinsTest is Test {
 
         // Calculate the expected coin ID
         coinId = uint160(_predictAddress(keccak256(abi.encode(NAME, SYMBOL))));
-        //console.log("coinId", address(uint160(coinId)));
+        console.log("coinId", address(uint160(coinId)));
         vm.stopPrank();
     }
 

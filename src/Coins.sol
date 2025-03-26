@@ -17,7 +17,7 @@ contract Coins {
     event Approval(address indexed, address indexed, uint256 indexed, uint256);
     event Transfer(address, address indexed, address indexed, uint256 indexed, uint256);
 
-    Token immutable implementation = new Token{salt: bytes32(bytes20(address(this)))}();
+    Token immutable implementation = new Token{salt: keccak256("")}();
 
     mapping(uint256 id => Metadata) _metadata;
 
