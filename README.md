@@ -250,6 +250,12 @@ coins.create(
 
 See the [full usage examples](./examples/CoinsExamples.sol) for more detailed code samples covering all major functions.
 
+## Security Note
+
+A malicious or uncareful owner can potentially keep minting ERC6909 coins while ERC20 proxies circulate, leading to supply fragmentation.
+
+Note: If the max uint256 is minted, then converted into ERC20, there may be reverts or other unexpected behavior if more ERC6909 are minted.
+
 ## Getting Started  
 
 Run: `curl -L https://foundry.paradigm.xyz | bash && source ~/.bashrc && foundryup`  
