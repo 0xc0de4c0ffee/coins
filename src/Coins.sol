@@ -17,6 +17,8 @@ contract Coins {
     event Approval(address indexed, address indexed, uint256 indexed, uint256);
     event Transfer(address, address indexed, address indexed, uint256 indexed, uint256);
 
+    Token immutable token = new Token{salt: bytes32(bytes20(address(this)))}();
+
     mapping(uint256 id => Metadata) internal _metadata;
 
     mapping(uint256 id => uint256) public totalSupply;
@@ -72,8 +74,20 @@ contract Coins {
         uint256 supply
     ) public {
         require(bytes(_tokenURI).length != 0, InvalidMetadata());
-        uint256 id =
-            uint160(address((new Token{salt: keccak256(abi.encodePacked(_name, _symbol))}())));
+        uint256 id;
+        Token _token = token;
+        bytes32 salt = keccak256(abi.encodePacked(_name, _symbol));
+        assembly ("memory-safe") {
+            mstore(0x21, 0x5af43d3d93803e602a57fd5bf3)
+            mstore(0x14, _token)
+            mstore(0x00, 0x602c3d8160093d39f33d3d3d3d363d3d37363d73)
+            id := create2(0, 0x0c, 0x35, salt)
+            if iszero(id) {
+                mstore(0x00, 0x30116425) // `DeploymentFailed()`.
+                revert(0x1c, 0x04)
+            }
+            mstore(0x21, 0) // Restore the overwritten part of the free memory pointer.
+        }
         _metadata[id] = Metadata(_name, _symbol, _tokenURI);
         emit Transfer(
             msg.sender,

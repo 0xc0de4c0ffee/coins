@@ -40,14 +40,37 @@ contract CoinsTest is Test {
     uint256 public coinId;
 
     function _predictAddress(bytes32 _salt) internal view returns (address) {
+        // First predict the implementation token address
+        address implementation = _predictImplementationAddress();
+
+        // Use the predicted implementation address to calculate the clone address
+        bytes memory proxyCode = abi.encodePacked(
+            hex"602c3d8160093d39f33d3d3d3d363d3d37363d73",
+            implementation,
+            hex"5af43d3d93803e602a57fd5bf3"
+        );
+
+        // Calculate CREATE2 address
         return address(
             uint160(
                 uint256(
                     keccak256(
-                        abi.encodePacked(
-                            bytes1(0xFF), address(coins), _salt, keccak256(type(Token).creationCode)
-                        )
+                        abi.encodePacked(bytes1(0xff), address(coins), _salt, keccak256(proxyCode))
                     )
+                )
+            )
+        );
+    }
+
+    function _predictImplementationAddress() internal view returns (address) {
+        // Predict the implementation token address based on how it's deployed in your contract
+        bytes32 salt = bytes32(bytes20(address(coins))); // Using the Coins contract address as salt
+        bytes32 initCodeHash = keccak256(type(Token).creationCode);
+
+        return address(
+            uint160(
+                uint256(
+                    keccak256(abi.encodePacked(bytes1(0xff), address(coins), salt, initCodeHash))
                 )
             )
         );
