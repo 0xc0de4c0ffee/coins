@@ -84,7 +84,7 @@ contract CoinsTest is Test {
         coins.create(NAME, SYMBOL, TOKEN_URI, deployer, INITIAL_SUPPLY);
 
         // Calculate the expected coin ID
-        coinId = uint160(_predictAddress(keccak256(abi.encodePacked(NAME, SYMBOL))));
+        coinId = uint160(_predictAddress(keccak256(abi.encode(NAME, SYMBOL))));
         //console.log("coinId", address(uint160(coinId)));
         vm.stopPrank();
     }
@@ -135,7 +135,7 @@ contract CoinsTest is Test {
         assertEq(coins.tokenURI(coinId), newTokenUri);
 
         // Calculate the new coin ID to verify it's still the same coin
-        uint256 newCoinId = uint160(_predictAddress(keccak256(abi.encodePacked(NAME, SYMBOL))));
+        uint256 newCoinId = uint160(_predictAddress(keccak256(abi.encode(NAME, SYMBOL))));
 
         // Verify that changing metadata doesn't create a new coin ID
         assertEq(coins.balanceOf(deployer, coinId), INITIAL_SUPPLY);
@@ -267,7 +267,7 @@ contract CoinsTest is Test {
         vm.prank(alice);
         coins.create(name2, symbol2, tokenUri2, alice, supply2);
 
-        uint256 coinId2 = uint160(_predictAddress(keccak256(abi.encodePacked(name2, symbol2))));
+        uint256 coinId2 = uint160(_predictAddress(keccak256(abi.encode(name2, symbol2))));
 
         // Verify both coins exist with correct owners and balances
         assertEq(coins.ownerOf(coinId), deployer);
@@ -405,7 +405,7 @@ contract CoinsTest is Test {
         vm.prank(alice);
         coins.create(zeroName, zeroSymbol, TOKEN_URI, alice, 0);
 
-        uint256 zeroId = uint160(_predictAddress(keccak256(abi.encodePacked(zeroName, zeroSymbol))));
+        uint256 zeroId = uint160(_predictAddress(keccak256(abi.encode(zeroName, zeroSymbol))));
 
         assertEq(coins.totalSupply(zeroId), 0);
         assertEq(coins.ownerOf(zeroId), alice);
@@ -444,8 +444,7 @@ contract CoinsTest is Test {
         // Create a second coin
         vm.prank(deployer);
         coins.create("Second Coin", "SEC", "https://second.com", deployer, 500 * 1e18);
-        uint256 secondCoinId =
-            uint160(_predictAddress(keccak256(abi.encodePacked("Second Coin", "SEC"))));
+        uint256 secondCoinId = uint160(_predictAddress(keccak256(abi.encode("Second Coin", "SEC"))));
 
         // Transfer both coins to alice
         vm.startPrank(deployer);
@@ -462,8 +461,7 @@ contract CoinsTest is Test {
         // Create a second coin
         vm.prank(deployer);
         coins.create("Second Coin", "SEC", "https://second.com", deployer, 500 * 1e18);
-        uint256 secondCoinId =
-            uint160(_predictAddress(keccak256(abi.encodePacked("Second Coin", "SEC"))));
+        uint256 secondCoinId = uint160(_predictAddress(keccak256(abi.encode("Second Coin", "SEC"))));
 
         // Transfer ownership of both coins
         vm.startPrank(deployer);
