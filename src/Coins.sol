@@ -76,7 +76,7 @@ contract Coins {
         require(bytes(_tokenURI).length != 0, InvalidMetadata());
         uint256 id;
         Token _implementation = implementation;
-        bytes32 salt = keccak256(abi.encode(_name, _symbol));
+        bytes32 salt = keccak256(abi.encodePacked(_name, address(this), _symbol));
         assembly ("memory-safe") {
             mstore(0x21, 0x5af43d3d93803e602a57fd5bf3)
             mstore(0x14, _implementation)
