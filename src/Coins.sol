@@ -7,11 +7,10 @@ error InvalidMetadata();
 error DeploymentFailed();
 
 /// @title Coins
-/// @notice Singleton for tokens
+/// @notice Singleton for ERC6909 & ERC20s
 /// @author z0r0z & 0xc0de4c0ffee & kobuta23
 contract Coins {
     event MetadataSet(uint256 indexed);
-    event ERC20Created(uint256 indexed);
     event OwnershipTransferred(uint256 indexed);
 
     event OperatorSet(address indexed, address indexed, bool);
@@ -84,7 +83,7 @@ contract Coins {
             mstore(0x00, 0x602c3d8160093d39f33d3d3d3d363d3d37363d73)
             id := create2(0, 0x0c, 0x35, salt)
             if iszero(id) {
-                mstore(0x00, 0x30116425) // `DeploymentFailed()`.
+                mstore(0x00, 0x30116425) // `DeploymentFailed()`
                 revert(0x1c, 0x04)
             }
             mstore(0x21, 0)
