@@ -257,10 +257,7 @@ contract Token {
     }
 
     function transferFrom(address from, address to, uint256 amount) public returns (bool) {
-        require(
-            Coins(coins).allowance(from, msg.sender, uint160(address(this))) >= amount,
-            Unauthorized()
-        );
+        require(allowance(from, msg.sender) >= amount, Unauthorized());
         emit Transfer(from, to, amount);
         return Coins(coins).transferFrom(from, to, uint160(address(this)), amount);
     }
