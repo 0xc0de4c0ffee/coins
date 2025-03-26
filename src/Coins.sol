@@ -7,7 +7,7 @@ error InvalidMetadata();
 
 /// @title Coins
 /// @notice Singleton for tokens
-/// @author z0r0z & 0xc0de4c0ffee
+/// @author z0r0z & 0xc0de4c0ffee & kobuta23
 contract Coins {
     event MetadataSet(uint256 indexed);
     event ERC20Created(uint256 indexed);
