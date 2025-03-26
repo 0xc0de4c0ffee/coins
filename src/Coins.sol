@@ -19,7 +19,7 @@ contract Coins {
 
     Token immutable implementation = new Token{salt: bytes32(bytes20(address(this)))}();
 
-    mapping(uint256 id => Metadata) internal _metadata;
+    mapping(uint256 id => Metadata) _metadata;
 
     mapping(uint256 id => uint256) public totalSupply;
     mapping(uint256 id => address owner) public ownerOf;
@@ -221,7 +221,7 @@ contract Token {
     event Transfer(address indexed, address indexed, uint256);
 
     uint256 public constant decimals = 18;
-    address internal immutable coins = msg.sender;
+    address immutable coins = msg.sender;
 
     constructor() payable {}
 
