@@ -4,6 +4,7 @@ pragma solidity 0.8.29;
 error OnlyExternal();
 error Unauthorized();
 error InvalidMetadata();
+error DeploymentFailed();
 
 /// @title Coins
 /// @notice Singleton for tokens
@@ -17,7 +18,7 @@ contract Coins {
     event Approval(address indexed, address indexed, uint256 indexed, uint256);
     event Transfer(address, address indexed, address indexed, uint256 indexed, uint256);
 
-    Token immutable token = new Token{salt: bytes32(bytes20(address(this)))}();
+    Token immutable implementation = new Token{salt: bytes32(bytes20(address(this)))}();
 
     mapping(uint256 id => Metadata) internal _metadata;
 
@@ -75,7 +76,7 @@ contract Coins {
     ) public {
         require(bytes(_tokenURI).length != 0, InvalidMetadata());
         uint256 id;
-        Token _token = token;
+        Token _token = implementation;
         bytes32 salt = keccak256(abi.encodePacked(_name, _symbol));
         assembly ("memory-safe") {
             mstore(0x21, 0x5af43d3d93803e602a57fd5bf3)
