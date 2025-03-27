@@ -7,8 +7,8 @@ import {Test} from "forge-std/Test.sol";
 import {Coins, Token} from "../src/Coins.sol";
 import {MockERC20} from "@solady/test/utils/mocks/MockERC20.sol";
 
+error OnlyExternal();
 error Unauthorized();
-error AlreadyCreated();
 error InvalidMetadata();
 
 contract CoinsTest is Test {
@@ -40,14 +40,37 @@ contract CoinsTest is Test {
     uint256 public coinId;
 
     function _predictAddress(bytes32 _salt) internal view returns (address) {
+        // First predict the implementation token address
+        address implementation = _predictImplementationAddress();
+
+        // Use the predicted implementation address to calculate the clone address
+        bytes memory proxyCode = abi.encodePacked(
+            hex"602c3d8160093d39f33d3d3d3d363d3d37363d73",
+            implementation,
+            hex"5af43d3d93803e602a57fd5bf3"
+        );
+
+        // Calculate CREATE2 address
         return address(
             uint160(
                 uint256(
                     keccak256(
-                        abi.encodePacked(
-                            bytes1(0xFF), address(coins), _salt, keccak256(type(Token).creationCode)
-                        )
+                        abi.encodePacked(bytes1(0xff), address(coins), _salt, keccak256(proxyCode))
                     )
+                )
+            )
+        );
+    }
+
+    function _predictImplementationAddress() internal view returns (address) {
+        // Predict the implementation token address based on how it's deployed in your contract
+        bytes32 salt = keccak256("");
+        bytes32 initCodeHash = keccak256(type(Token).creationCode);
+
+        return address(
+            uint160(
+                uint256(
+                    keccak256(abi.encodePacked(bytes1(0xff), address(coins), salt, initCodeHash))
                 )
             )
         );
@@ -61,8 +84,8 @@ contract CoinsTest is Test {
         coins.create(NAME, SYMBOL, TOKEN_URI, deployer, INITIAL_SUPPLY);
 
         // Calculate the expected coin ID
-        coinId = uint160(_predictAddress(keccak256(abi.encodePacked(NAME, SYMBOL))));
-        //console.log("coinId", address(uint160(coinId)));
+        coinId = uint160(_predictAddress(keccak256(abi.encodePacked(NAME, address(coins), SYMBOL))));
+        console.log("coinId", address(uint160(coinId)));
         vm.stopPrank();
     }
 
@@ -83,7 +106,7 @@ contract CoinsTest is Test {
     function test_RevertWhen_CreatingDuplicateCoin() public {
         vm.prank(alice);
         // Should revert when trying to create a coin with same parameters
-        vm.expectRevert(AlreadyCreated.selector);
+        vm.expectRevert();
         coins.create(NAME, SYMBOL, TOKEN_URI, alice, INITIAL_SUPPLY);
     }
 
@@ -112,7 +135,8 @@ contract CoinsTest is Test {
         assertEq(coins.tokenURI(coinId), newTokenUri);
 
         // Calculate the new coin ID to verify it's still the same coin
-        uint256 newCoinId = uint160(_predictAddress(keccak256(abi.encodePacked(NAME, SYMBOL))));
+        uint256 newCoinId =
+            uint160(_predictAddress(keccak256(abi.encodePacked(NAME, address(coins), SYMBOL))));
 
         // Verify that changing metadata doesn't create a new coin ID
         assertEq(coins.balanceOf(deployer, coinId), INITIAL_SUPPLY);
@@ -244,7 +268,8 @@ contract CoinsTest is Test {
         vm.prank(alice);
         coins.create(name2, symbol2, tokenUri2, alice, supply2);
 
-        uint256 coinId2 = uint160(_predictAddress(keccak256(abi.encodePacked(name2, symbol2))));
+        uint256 coinId2 =
+            uint160(_predictAddress(keccak256(abi.encodePacked(name2, address(coins), symbol2))));
 
         // Verify both coins exist with correct owners and balances
         assertEq(coins.ownerOf(coinId), deployer);
@@ -264,24 +289,6 @@ contract CoinsTest is Test {
         assertEq(coins.balanceOf(bob, coinId2), 2000 * 1e18);
     }
 
-    function test_NativeToken() public {
-        console.log("coinId", address(uint160(coinId)));
-        coins.createToken(coinId);
-        vm.startPrank(deployer);
-        // Native token should be tokenizable
-        coins.tokenize(coinId, 1000 * 1e18);
-        // Native token should be untokenizable
-        coins.untokenize(coinId, 1000 * 1e18);
-        vm.stopPrank();
-
-        // Native token should not be wrappable
-        vm.expectRevert();
-        coins.wrap(Token(address(uint160(coinId))), 1000 * 1e18);
-        // Native token should not be unwrappable
-        vm.expectRevert();
-        coins.unwrap(Token(address(uint160(coinId))), 1000 * 1e18);
-    }
-
     function test_ExternalToken() public {
         // Create an external token
         vm.startPrank(deployer);
@@ -290,63 +297,6 @@ contract CoinsTest is Test {
         mockToken.approve(address(coins), 1000 * 1e18);
         coins.wrap(Token(address(mockToken)), 1000 * 1e18);
         coins.unwrap(Token(address(mockToken)), 1000 * 1e18);
-        vm.stopPrank();
-        // External token should Not be deployed
-        vm.expectRevert(InvalidMetadata.selector);
-        coins.createToken(uint160(address(mockToken)));
-
-        // External token should Not be tokenizable
-        vm.expectRevert();
-        coins.tokenize(uint160(address(mockToken)), 1000 * 1e18);
-
-        // External token should Not be untokenizable
-        vm.expectRevert();
-        coins.untokenize(uint160(address(mockToken)), 1000 * 1e18);
-    }
-
-    function test_RevertWhen_WrappingNativeToken() public {
-        // First create the token from the existing coin
-        vm.startPrank(deployer);
-
-        // Calculate and verify the expected address
-        address expectedTokenAddress = address(uint160(coinId));
-        bytes32 salt = keccak256(abi.encodePacked(NAME, SYMBOL));
-        address predictedAddress = _predictAddress(salt);
-
-        assertEq(
-            predictedAddress, expectedTokenAddress, "Predicted token address does not match coinId"
-        );
-
-        // Deploy the token and verify its address
-        coins.createToken(coinId);
-        assertEq(
-            address(uint160(coinId)).code.length > 0,
-            true,
-            "Token contract not deployed at expected address"
-        );
-
-        // Tokenize some coins to create ERC20 tokens
-        uint256 amount = 100 * 1e18;
-        coins.tokenize(coinId, amount);
-
-        // Verify token balances
-        Token nativeToken = Token(address(uint160(coinId)));
-        assertEq(
-            nativeToken.balanceOf(deployer), amount, "Token balance incorrect after tokenization"
-        );
-        assertEq(
-            coins.balanceOf(deployer, coinId),
-            INITIAL_SUPPLY - amount,
-            "Coin balance incorrect after tokenization"
-        );
-
-        // Approve the contract to take the tokens
-        nativeToken.approve(address(coins), amount);
-
-        // Attempt to wrap the native token back, should revert
-        vm.expectRevert(InvalidMetadata.selector);
-        coins.wrap(nativeToken, amount);
-
         vm.stopPrank();
     }
 
@@ -357,6 +307,7 @@ contract CoinsTest is Test {
         coins.approve(alice, coinId, maxAllowance);
 
         // Transfer should not reduce allowance when it's set to max
+        vm.startPrank(alice);
         coins.transferFrom(deployer, bob, coinId, 1000 * 1e18);
         assertEq(coins.allowance(deployer, alice, coinId), maxAllowance);
         vm.stopPrank();
@@ -449,20 +400,6 @@ contract CoinsTest is Test {
         coins.transfer(alice, coinId, transferAmount);
     }
 
-    function test_RevertWhen_UntokenizingMoreThanBalance() public {
-        vm.startPrank(deployer);
-
-        // Create token and tokenize some amount
-        coins.createToken(coinId);
-        coins.tokenize(coinId, 500 * 1e18);
-
-        // Try to untokenize more than was tokenized
-        vm.expectRevert();
-        coins.untokenize(coinId, 1000 * 1e18);
-
-        vm.stopPrank();
-    }
-
     function test_CreateWithZeroSupply() public {
         string memory zeroName = "Zero Supply";
         string memory zeroSymbol = "ZERO";
@@ -470,7 +407,9 @@ contract CoinsTest is Test {
         vm.prank(alice);
         coins.create(zeroName, zeroSymbol, TOKEN_URI, alice, 0);
 
-        uint256 zeroId = uint160(_predictAddress(keccak256(abi.encodePacked(zeroName, zeroSymbol))));
+        uint256 zeroId = uint160(
+            _predictAddress(keccak256(abi.encodePacked(zeroName, address(coins), zeroSymbol)))
+        );
 
         assertEq(coins.totalSupply(zeroId), 0);
         assertEq(coins.ownerOf(zeroId), alice);
@@ -484,9 +423,8 @@ contract CoinsTest is Test {
 
     function test_DifferentURIForSameNameSymbol() public {
         vm.prank(alice);
-
         // This should fail because the ID is based on name/symbol, not URI
-        vm.expectRevert(AlreadyCreated.selector);
+        vm.expectRevert();
         coins.create(NAME, SYMBOL, "https://different-uri.com", alice, 1000 * 1e18);
     }
 
@@ -510,8 +448,9 @@ contract CoinsTest is Test {
         // Create a second coin
         vm.prank(deployer);
         coins.create("Second Coin", "SEC", "https://second.com", deployer, 500 * 1e18);
-        uint256 secondCoinId =
-            uint160(_predictAddress(keccak256(abi.encodePacked("Second Coin", "SEC"))));
+        uint256 secondCoinId = uint160(
+            _predictAddress(keccak256(abi.encodePacked("Second Coin", address(coins), "SEC")))
+        );
 
         // Transfer both coins to alice
         vm.startPrank(deployer);
@@ -528,8 +467,9 @@ contract CoinsTest is Test {
         // Create a second coin
         vm.prank(deployer);
         coins.create("Second Coin", "SEC", "https://second.com", deployer, 500 * 1e18);
-        uint256 secondCoinId =
-            uint160(_predictAddress(keccak256(abi.encodePacked("Second Coin", "SEC"))));
+        uint256 secondCoinId = uint160(
+            _predictAddress(keccak256(abi.encodePacked("Second Coin", address(coins), "SEC")))
+        );
 
         // Transfer ownership of both coins
         vm.startPrank(deployer);
@@ -552,11 +492,6 @@ contract CoinsTest is Test {
     function test_ERC20Interactions() public {
         vm.startPrank(deployer);
 
-        // Create and tokenize
-        coins.createToken(coinId);
-        uint256 amount = 500 * 1e18;
-        coins.tokenize(coinId, amount);
-
         // Get the ERC20 token
         Token token = Token(address(uint160(coinId)));
 
@@ -573,27 +508,9 @@ contract CoinsTest is Test {
         vm.prank(alice);
         token.transferFrom(deployer, alice, 200 * 1e18);
         assertEq(token.balanceOf(alice), 200 * 1e18);
-        assertEq(token.balanceOf(deployer), 200 * 1e18);
-    }
 
-    function test_TokenURIUpdatesAfterTokenization() public {
-        vm.startPrank(deployer);
-
-        // Create token
-        coins.createToken(coinId);
-
-        // Update URI
-        string memory newURI = "https://updated-uri.com";
-        coins.setMetadata(coinId, newURI);
-
-        // Verify the token still works with updated URI
-        uint256 amount = 100 * 1e18;
-        coins.tokenize(coinId, amount);
-
-        // Verify URI was updated
-        assertEq(coins.tokenURI(coinId), newURI);
-
-        vm.stopPrank();
+        // Fix: Calculate correct expected balance
+        assertEq(token.balanceOf(deployer), INITIAL_SUPPLY - 100 * 1e18 - 200 * 1e18);
     }
 
     function test_LargeTransferGasUsage() public {
@@ -639,9 +556,6 @@ contract CoinsTest is Test {
         console.log("coinId", address(uint160(coinId)));
         Token token = Token(address(uint160(coinId)));
         vm.startPrank(deployer);
-        coins.createToken(coinId);
-        // Native token should be tokenizable
-        coins.tokenize(coinId, 1e18);
         token.approve(address(coins), 1e18);
         vm.stopPrank();
         console.log("balance", token.balanceOf(deployer));
@@ -649,7 +563,7 @@ contract CoinsTest is Test {
         // Native token should not be wrappable
         console.log("Coin's Balance", token.balanceOf(address(coins)));
         vm.prank(deployer);
-        vm.expectRevert(InvalidMetadata.selector);
+        vm.expectRevert(OnlyExternal.selector);
         coins.wrap(token, 1e18);
         console.log("Coin's Balance", token.balanceOf(address(coins)));
     }

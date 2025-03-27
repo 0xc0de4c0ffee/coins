@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.29;
 
+error OnlyExternal();
 error Unauthorized();
-error AlreadyCreated();
 error InvalidMetadata();
+error DeploymentFailed();
 
 /// @title Coins
-/// @notice Singleton for tokens
-/// @author z0r0z & 0xc0de4c0ffee
+/// @notice Singleton for ERC6909 & ERC20s
+/// @author z0r0z & 0xc0de4c0ffee & kobuta23
 contract Coins {
     event MetadataSet(uint256 indexed);
-    event ERC20Created(uint256 indexed);
     event OwnershipTransferred(uint256 indexed);
 
     event OperatorSet(address indexed, address indexed, bool);
     event Approval(address indexed, address indexed, uint256 indexed, uint256);
     event Transfer(address, address indexed, address indexed, uint256 indexed, uint256);
 
-    mapping(uint256 id => Metadata) internal _metadata;
+    Token immutable implementation = new Token{salt: keccak256("")}();
+
+    mapping(uint256 id => Metadata) _metadata;
 
     mapping(uint256 id => uint256) public totalSupply;
     mapping(uint256 id => address owner) public ownerOf;
@@ -34,7 +36,7 @@ contract Coins {
 
     constructor() payable {}
 
-    // COIN METADATA
+    // METADATA
 
     struct Metadata {
         string name;
@@ -62,7 +64,7 @@ contract Coins {
         return _metadata[id].tokenURI;
     }
 
-    // COIN ID CREATION
+    // CREATION
 
     function create(
         string calldata _name,
@@ -72,19 +74,20 @@ contract Coins {
         uint256 supply
     ) public {
         require(bytes(_tokenURI).length != 0, InvalidMetadata());
-        uint256 id = uint160(
-            uint256(
-                keccak256(
-                    abi.encodePacked(
-                        bytes1(0xFF),
-                        this,
-                        keccak256(abi.encodePacked(_name, _symbol)),
-                        keccak256(type(Token).creationCode)
-                    )
-                )
-            )
-        );
-        require(bytes(_metadata[id].tokenURI).length == 0, AlreadyCreated());
+        uint256 id;
+        Token _implementation = implementation;
+        bytes32 salt = keccak256(abi.encodePacked(_name, address(this), _symbol));
+        assembly ("memory-safe") {
+            mstore(0x21, 0x5af43d3d93803e602a57fd5bf3)
+            mstore(0x14, _implementation)
+            mstore(0x00, 0x602c3d8160093d39f33d3d3d3d363d3d37363d73)
+            id := create2(0, 0x0c, 0x35, salt)
+            if iszero(id) {
+                mstore(0x00, 0x30116425) // `DeploymentFailed()`
+                revert(0x1c, 0x04)
+            }
+            mstore(0x21, 0)
+        }
         _metadata[id] = Metadata(_name, _symbol, _tokenURI);
         emit Transfer(
             msg.sender,
@@ -95,30 +98,11 @@ contract Coins {
         );
     }
 
-    // CREATE2 ERC20 TOKENS
-
-    function createToken(uint256 id) public {
-        Metadata storage meta = _metadata[id];
-        require(bytes(meta.tokenURI).length != 0, InvalidMetadata());
-        new Token{salt: keccak256(abi.encodePacked(meta.name, meta.symbol))}();
-        emit ERC20Created(id);
-    }
-
-    function tokenize(uint256 id, uint256 amount) public {
-        _burn(msg.sender, id, amount);
-        Token(address(uint160(id))).mint(msg.sender, amount);
-    }
-
-    function untokenize(uint256 id, uint256 amount) public {
-        Token(address(uint160(id))).burn(msg.sender, amount);
-        _mint(msg.sender, id, amount);
-    }
-
-    // COIN ID WRAPPING
+    // WRAPPING
 
     function wrap(Token token, uint256 amount) public {
         uint256 id = uint160(address(token));
-        require(bytes(_metadata[id].tokenURI).length == 0, InvalidMetadata());
+        require(bytes(_metadata[id].tokenURI).length == 0, OnlyExternal());
         token.transferFrom(msg.sender, address(this), amount);
         _mint(msg.sender, id, amount);
     }
@@ -128,7 +112,7 @@ contract Coins {
         token.transfer(msg.sender, amount);
     }
 
-    // COIN ID MINT/BURN
+    // MINT/BURN
 
     function mint(address to, uint256 id, uint256 amount) public onlyOwnerOf(id) {
         _mint(to, id, amount);
@@ -138,7 +122,7 @@ contract Coins {
         _burn(msg.sender, id, amount);
     }
 
-    // COIN ID GOVERNANCE
+    // GOVERNANCE
 
     function setMetadata(uint256 id, string calldata _tokenURI) public onlyOwnerOf(id) {
         require(bytes(_tokenURI).length != 0, InvalidMetadata());
@@ -166,7 +150,7 @@ contract Coins {
         public
         returns (bool)
     {
-        if (msg.sender != from) {
+        if (msg.sender != address(uint160(id))) {
             if (!isOperator[from][msg.sender]) {
                 if (allowance[from][msg.sender][id] != type(uint256).max) {
                     allowance[from][msg.sender][id] -= amount;
@@ -190,6 +174,19 @@ contract Coins {
     function setOperator(address operator, bool approved) public returns (bool) {
         isOperator[msg.sender][operator] = approved;
         emit OperatorSet(msg.sender, operator, approved);
+        return true;
+    }
+
+    // ERC20 APPROVAL
+
+    function setAllowance(address owner, address spender, uint256 id, uint256 amount)
+        public
+        payable
+        returns (bool)
+    {
+        require(msg.sender == address(uint160(id)), Unauthorized());
+        allowance[owner][spender][id] = amount;
+        emit Approval(owner, spender, id, amount);
         return true;
     }
 
@@ -223,13 +220,8 @@ contract Token {
     event Approval(address indexed, address indexed, uint256);
     event Transfer(address indexed, address indexed, uint256);
 
-    uint256 public totalSupply;
-
     uint256 public constant decimals = 18;
-    address internal immutable coins = msg.sender;
-
-    mapping(address owner => uint256) public balanceOf;
-    mapping(address owner => mapping(address spender => uint256)) public allowance;
+    address immutable coins = msg.sender;
 
     constructor() payable {}
 
@@ -241,46 +233,32 @@ contract Token {
         return Coins(coins).symbol(uint160(address(this)));
     }
 
+    function totalSupply() public view returns (uint256) {
+        return Coins(coins).totalSupply(uint160(address(this)));
+    }
+
+    function balanceOf(address owner) public view returns (uint256) {
+        return Coins(coins).balanceOf(owner, uint160(address(this)));
+    }
+
+    function allowance(address owner, address spender) public view returns (uint256) {
+        if (Coins(coins).isOperator(owner, spender)) return type(uint256).max;
+        return Coins(coins).allowance(owner, spender, uint160(address(this)));
+    }
+
     function approve(address spender, uint256 amount) public returns (bool) {
-        allowance[msg.sender][spender] = amount;
         emit Approval(msg.sender, spender, amount);
-        return true;
+        return Coins(coins).setAllowance(msg.sender, spender, uint160(address(this)), amount);
     }
 
     function transfer(address to, uint256 amount) public returns (bool) {
-        balanceOf[msg.sender] -= amount;
-        unchecked {
-            balanceOf[to] += amount;
-        }
         emit Transfer(msg.sender, to, amount);
-        return true;
+        return Coins(coins).transferFrom(msg.sender, to, uint160(address(this)), amount);
     }
 
     function transferFrom(address from, address to, uint256 amount) public returns (bool) {
-        if (allowance[from][msg.sender] != type(uint256).max) allowance[from][msg.sender] -= amount;
-        balanceOf[from] -= amount;
-        unchecked {
-            balanceOf[to] += amount;
-        }
+        require(allowance(from, msg.sender) >= amount, Unauthorized());
         emit Transfer(from, to, amount);
-        return true;
-    }
-
-    function mint(address to, uint256 amount) public payable {
-        require(msg.sender == coins, Unauthorized());
-        unchecked {
-            totalSupply += amount;
-            balanceOf[to] += amount;
-        }
-        emit Transfer(address(0), to, amount);
-    }
-
-    function burn(address from, uint256 amount) public payable {
-        require(msg.sender == coins, Unauthorized());
-        balanceOf[from] -= amount;
-        unchecked {
-            totalSupply -= amount;
-        }
-        emit Transfer(from, address(0), amount);
+        return Coins(coins).transferFrom(from, to, uint160(address(this)), amount);
     }
 }

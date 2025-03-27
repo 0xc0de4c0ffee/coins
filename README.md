@@ -4,13 +4,17 @@
 [![Foundry](https://img.shields.io/badge/Built%20with-Foundry-000000.svg)](https://getfoundry.sh/) 
 ![tests](https://github.com/z0r0z/coins/actions/workflows/ci.yml/badge.svg)  
 
-Hyper-minimal fungible token singleton built on ERC6909 with two-way compatibility with ERC20.  
+Hyper-minimal fungible token singleton built on ERC6909 with two-way compatibility with ERC20.
 
 ![Coins Architecture Diagram](./assets/coins-architecture.svg)
 
 ## Overview
 
 Coins is a singleton smart contract for creating and managing fungible tokens using the ERC6909 multi-token standard. It provides a gas-efficient alternative to deploying multiple ERC20 token contracts while maintaining compatibility with the ERC20 standard.
+
+## Deployment
+
+Coins is deployed to [`0x0000000000009710cd229bF635c4500029651eE8`](https://contractscan.xyz/contract/0x0000000000009710cd229bF635c4500029651eE8) on every chain linked.
 
 ## Features
 
@@ -30,12 +34,6 @@ flowchart TB
     subgraph "Token Creation"
         A[User] -->|create\nname, symbol, URI, owner, supply| B(New Token ID)
         B -->|mint| C[Token Balance]
-    end
-    
-    subgraph "ERC20 Compatibility"
-        C -->|createToken| D(Deploy ERC20 Contract)
-        C -->|tokenize| E[ERC20 Token]
-        E -->|untokenize| C
     end
     
     subgraph "Token Wrapping"
@@ -68,65 +66,7 @@ function create(
 ) public
 ```
 
-Creates a new token ID with associated metadata, owner, and initial supply.
-
-### ERC20 Compatibility
-
-```solidity
-function createToken(uint256 id) public
-```
-
-Deploys an ERC20-compatible token contract for an existing token ID.
-
-```solidity
-function tokenize(uint256 id, uint256 amount) public
-function untokenize(uint256 id, uint256 amount) public
-```
-
-Convert between native Coins tokens and ERC20 tokens.
-
-#### Token Conversion Flow
-
-The following diagram illustrates how tokens can be converted between ERC6909 and ERC20 formats:
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Coins as Coins Contract
-    participant Token as ERC20 Token
-    
-    Note over User,Token: ERC20 Compatibility Flow
-    
-    User->>Coins: create(name, symbol, URI, owner, supply)
-    Note right of Coins: Token ID created
-    
-    User->>Coins: createToken(id)
-    Coins->>Token: deploy
-    Note right of Token: ERC20 token deployed
-    
-    User->>Coins: tokenize(id, amount)
-    Coins->>Coins: burn tokens from user
-    Coins->>Token: mint tokens to user
-    Note right of Token: User now has ERC20 tokens
-    
-    User->>Coins: untokenize(id, amount)
-    Coins->>Token: burn tokens from user
-    Coins->>Coins: mint tokens to user
-    Note right of Coins: User now has ERC6909 tokens
-    
-    Note over User,Token: Token Wrapping Flow
-    
-    User->>Token: approve(Coins, amount)
-    User->>Coins: wrap(token, amount)
-    Coins->>Token: transferFrom(user, Coins, amount)
-    Coins->>Coins: mint tokens to user
-    Note right of Coins: User now has wrapped tokens
-    
-    User->>Coins: unwrap(token, amount)
-    Coins->>Coins: burn tokens from user
-    Coins->>Token: transfer tokens to user
-    Note right of Token: User now has original ERC20 tokens
-```
+Creates a new token ID with associated metadata, owner, and initial supply. Also creates ERC20 wrapper proxy.
 
 ### Token Wrapping
 
@@ -168,11 +108,10 @@ Standard token operations for transfers, approvals, and operator settings.
 
 ## Token Contract
 
-The `Token` contract is automatically created when using `createToken()` and provides standard ERC20 functionality:
+The `Token` contract is automatically created at same address as Coin ID and provides standard ERC20 functionality:
 
 - `name()` and `symbol()`: Inherited from Coins metadata
-- `approve()`, `transfer()`, `transferFrom()`: Standard ERC20 functions
-- `mint()` and `burn()`: Restricted to the Coins contract
+- `approve()`, `transfer()`, `transferFrom()`: Standard ERC20 functions that call into ERC6909 transfers
 
 ## Token ID Mechanism
 
@@ -180,34 +119,13 @@ The Coins contract uses a deterministic approach to generate and map token IDs, 
 
 ### For Newly Created Coins Tokens
 
-When you create a new token using the `create()` function, the token ID is generated deterministically using the following formula:
-
-```solidity
-uint256 id = uint160(
-    uint256(
-        keccak256(
-            abi.encodePacked(
-                bytes1(0xFF),
-                address(coins),
-                keccak256(abi.encodePacked(name, symbol)),
-                keccak256(type(Token).creationCode)
-            )
-        )
-    )
-);
-```
+When you create a new coin using the `create()` function, the token ID is generated deterministically based on name and symbol.
 
 This approach:
 1. Uses the token's name and symbol as unique identifiers
 2. Incorporates the Coins contract address to prevent collisions across different deployments
 3. Includes the Token contract's creation code to tie the ID to the implementation
 4. Follows the CREATE2 address derivation pattern, making the ID deterministic and predictable
-
-When you later call `createToken()`, this same formula ensures the ERC20 token contract is deployed at the address matching the token ID. This means:
-
-```
-Token Contract Address = address(uint160(tokenId))
-```
 
 Therefore, for any token created in the Coins system, its ID is identical to the address of its corresponding ERC20 contract.
 
@@ -249,12 +167,6 @@ coins.create(
 ```
 
 See the [full usage examples](./examples/CoinsExamples.sol) for more detailed code samples covering all major functions.
-
-## Security Note
-
-A malicious or uncareful owner can potentially keep minting ERC6909 coins while ERC20 proxies circulate, leading to supply fragmentation.
-
-Note: If the max uint256 is minted, then converted into ERC20, there may be reverts or other unexpected behavior if more ERC6909 are minted.
 
 ## Getting Started  
 
